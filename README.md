@@ -67,3 +67,13 @@ See `.env.example` for defaults.
 
 - Sharing is optional. If no sharing plugin URL is configured in the UI, local editing and PDF export still work fully.
 - Existing `/api/*` endpoints remain available for compatibility.
+
+## Legacy Template Migration
+
+Export legacy SQLite templates into importable local-first JSON packages:
+
+```bash
+python scripts/export_legacy_templates.py --db data/sow.db --out legacy_templates.json
+```
+
+The output contains `packages[]`; import each package in-app via the Import button.
