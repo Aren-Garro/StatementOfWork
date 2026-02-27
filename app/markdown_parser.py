@@ -11,7 +11,6 @@ Supports variable substitution:
 """
 import re
 from markdown_it import MarkdownIt
-from mdit_py_plugins.container import container_plugin
 
 
 def _substitute_variables(text: str, variables: dict) -> str:
@@ -25,6 +24,7 @@ def _substitute_variables(text: str, variables: dict) -> str:
 def _extract_variables_block(text: str) -> tuple[str, dict]:
     """Extract :::variables block and parse key-value pairs."""
     extracted_vars = {}
+
     def parse_block(match):
         content = match.group(1)
         for line in content.strip().split('\n'):
@@ -77,11 +77,11 @@ def _build_sig_block(lines: list) -> str:
     for line in lines:
         if ':' in line:
             label, value = line.split(':', 1)
-            html += f'  <div class="sig-field">'
+            html += '  <div class="sig-field">'
             html += f'<span class="sig-label">{label.strip()}:</span> '
             html += f'<span class="sig-value">{value.strip()}</span>'
-            html += f'<div class="sig-line"></div>'
-            html += f'</div>\n'
+            html += '<div class="sig-line"></div>'
+            html += '</div>\n'
         else:
             html += f'  <p>{line}</p>\n'
     html += '</div>\n'
@@ -90,12 +90,6 @@ def _build_sig_block(lines: list) -> str:
 
 def _create_container_renderer(block_type: str):
     """Create a render function for custom container blocks."""
-    renderers = {
-        'pricing': _render_pricing_block,
-        'timeline': _render_timeline_block,
-        'signature': _render_signature_block,
-    }
-
     def render(self, tokens, idx, options, env):
         if tokens[idx].nesting == 1:
             return f'<!-- {block_type}_start -->'

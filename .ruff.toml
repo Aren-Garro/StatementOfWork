@@ -1,0 +1,10 @@
+line-length = 120
+exclude = [
+  ".git",
+  "__pycache__",
+  ".venv",
+  ".pytest_cache",
+  ".tmp",
+  ".tmp_pytest",
+  "pytest-cache-files-*",
+]

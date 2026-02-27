@@ -74,7 +74,8 @@ def test_expired_link_and_cleanup(client):
     with app.app_context():
         db = models.get_db()
         db.execute(
-            """INSERT INTO published_docs (id, title, html, created_at, expires_at, deleted, views, signed, jurisdiction)
+            """INSERT INTO published_docs
+               (id, title, html, created_at, expires_at, deleted, views, signed, jurisdiction)
                VALUES (?, ?, ?, ?, ?, 0, 0, 0, 'US_BASE')""",
             (expired_id, "Expired", "<p>old</p>", created_at, expires_at),
         )

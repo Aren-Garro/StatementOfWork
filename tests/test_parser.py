@@ -1,5 +1,4 @@
 """Tests for the markdown parser with SOW extensions."""
-import pytest
 from app.markdown_parser import render_markdown
 
 
