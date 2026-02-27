@@ -78,6 +78,7 @@ pre-commit run --all-files
 
 - Sharing is optional. If no sharing plugin URL is configured in the UI, local editing and PDF export still work fully.
 - Existing `/api/*` endpoints remain available for compatibility.
+- Threat model documentation: `docs/threat-model.md`.
 
 ## Legacy Template Migration
 
