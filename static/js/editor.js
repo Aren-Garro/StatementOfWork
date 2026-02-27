@@ -1,27 +1,100 @@
+
 (function () {
     'use strict';
 
     const DB_NAME = 'sow_creator_db';
-    const DB_VERSION = 1;
+    const DB_VERSION = 2;
     const DOC_STORE = 'documents';
     const TEMPLATE_STORE = 'templates';
+    const CLIENT_STORE = 'clients';
     const SAVE_DEBOUNCE_MS = 500;
+
+    const CLAUSE_MARKER_START = '<!-- CLAUSE_PACK_START -->';
+    const CLAUSE_MARKER_END = '<!-- CLAUSE_PACK_END -->';
+
+    const CLAUSE_PACKS = {
+        US_BASE: `## Legal Terms
+
+- Independent contractor relationship only; no employment benefits are implied.
+- Confidential information must be protected by both parties.
+- Intellectual property transfers upon final payment unless otherwise stated.
+- Payment due within 15 days unless amended in writing.
+- Scope changes require a signed change order.
+`,
+        US_NY: `## Legal Terms (US + New York)
+
+- Includes US baseline independent contractor, confidentiality, IP, and payment terms.
+- Written contract and compensation terms should align with New York freelance protections.
+- Late payment risk and non-payment remedies should be documented in writing.
+- Scope changes require written approval and updated schedule/fees.
+`,
+        US_CA: `## Legal Terms (US + California)
+
+- Includes US baseline independent contractor, confidentiality, IP, and payment terms.
+- Contractor classification, deliverable ownership, and payment timing must be explicit.
+- Reimbursements and acceptance criteria should be listed to reduce disputes.
+- Scope changes require written approval and updated schedule/fees.
+`,
+    };
+
+    const REQUIRED_GUARDRAILS = [
+        { key: 'scope', label: 'Scope section', test: (t) => t.includes('## scope') },
+        { key: 'deliverables', label: 'Deliverables section', test: (t) => t.includes('## deliverables') },
+        { key: 'timeline', label: 'Timeline section', test: (t) => t.includes('## timeline') || t.includes(':::timeline') },
+        { key: 'acceptance', label: 'Acceptance criteria', test: (t) => t.includes('acceptance criteria') },
+        { key: 'payment', label: 'Payment terms', test: (t) => t.includes('payment terms') || t.includes('net 15') || t.includes('net 30') },
+        { key: 'out_of_scope', label: 'Out of scope / exclusions', test: (t) => t.includes('out of scope') || t.includes('exclusions') },
+        { key: 'change_order', label: 'Change-order clause', test: (t) => t.includes('change order') },
+        { key: 'signatures', label: 'Signature block', test: (t) => t.includes(':::signature') || t.includes('## signatures') },
+    ];
 
     const SAMPLE_MARKDOWN = `# {{project_name}}
 ## Statement of Work
 
-**Prepared for:** {{client_name}}  
-**Prepared by:** {{consultant_name}}  
+**Prepared for:** {{client_name}}
+**Prepared by:** {{consultant_name}}
 **Date:** {{date}}
 
 ---
 
 ## Scope
 
-- Discovery
+### In Scope
+- Discovery and planning
 - Implementation
-- Testing
-- Launch support
+- QA and launch support
+
+### Out of Scope
+- Ongoing maintenance beyond 14 days
+
+## Deliverables
+
+- Requirements summary
+- Working implementation
+- Launch checklist
+
+## Timeline
+
+:::timeline
+- Week 1-2: Discovery
+- Week 3-6: Implementation
+- Week 7: QA and launch
+:::
+
+## Acceptance Criteria
+
+- Core requirements implemented as described
+- Defects above severity-2 resolved before final acceptance
+
+## Payment Terms
+
+- 30% deposit to start
+- 40% on implementation completion
+- 30% on final acceptance
+
+## Change Order
+
+Any scope change requires written approval with adjusted schedule and fees.
 
 :::pricing
 | Phase | Hours | Rate | Total |
@@ -30,12 +103,6 @@
 | Build | 40 | $150 | $6000 |
 | QA | 12 | $150 | $1800 |
 | **Total** | **60** |  | **$9000** |
-:::
-
-:::timeline
-- Week 1-2: Discovery
-- Week 3-8: Build
-- Week 9-10: QA and launch
 :::
 
 :::signature
@@ -50,6 +117,8 @@ Date: {{date}}
     const state = {
         db: null,
         currentDoc: null,
+        activeRevision: null,
+        clients: [],
         saveTimer: null,
     };
 
@@ -59,20 +128,44 @@ Date: {{date}}
         charCount: document.getElementById('char-count'),
         saveStatus: document.getElementById('save-status'),
         docName: document.getElementById('doc-name'),
+        docStatus: document.getElementById('doc-status'),
+        revisionLabel: document.getElementById('revision-label'),
+        guardrailList: document.getElementById('guardrail-list'),
+        revisionList: document.getElementById('revision-list'),
         docList: document.getElementById('doc-list'),
         templateSelect: document.getElementById('template-select'),
         pageSize: document.getElementById('page-size'),
+        clausePack: document.getElementById('clause-pack'),
+        clientSelect: document.getElementById('client-select'),
+        clientLegalName: document.getElementById('client-legal-name'),
+        clientContactName: document.getElementById('client-contact-name'),
+        clientEmail: document.getElementById('client-email'),
+        clientState: document.getElementById('client-state'),
+        btnSaveClient: document.getElementById('btn-save-client'),
+        btnApplyClausePack: document.getElementById('btn-apply-clause-pack'),
         btnSave: document.getElementById('btn-save'),
         btnNew: document.getElementById('btn-new'),
+        btnNewRevision: document.getElementById('btn-new-revision'),
+        btnChangeOrder: document.getElementById('btn-change-order'),
+        btnSignConsultant: document.getElementById('btn-sign-consultant'),
+        btnSignClient: document.getElementById('btn-sign-client'),
         btnExport: document.getElementById('btn-export'),
+        btnExportMd: document.getElementById('btn-export-md'),
+        btnExportJson: document.getElementById('btn-export-json'),
+        btnImport: document.getElementById('btn-import'),
+        fileImport: document.getElementById('file-import'),
         btnPublish: document.getElementById('btn-publish'),
         btnSettings: document.getElementById('btn-settings'),
         varInputs: document.querySelectorAll('[data-var]'),
         snippetButtons: document.querySelectorAll('[data-snippet]'),
     };
 
-    function uid() {
-        return 'doc_' + Math.random().toString(36).slice(2, 10);
+    function uid(prefix) {
+        return (prefix || 'id') + '_' + Math.random().toString(36).slice(2, 11);
+    }
+
+    function nowIso() {
+        return new Date().toISOString();
     }
 
     function today() {
@@ -103,7 +196,7 @@ Date: {{date}}
             return null;
         }
 
-        const toCells = (line) => line.split('|').map(s => s.trim()).filter(Boolean);
+        const toCells = (line) => line.split('|').map((s) => s.trim()).filter(Boolean);
         const headers = toCells(header);
         const rows = [];
         let i = index + 2;
@@ -125,7 +218,7 @@ Date: {{date}}
         });
         html += '</tbody></table>';
 
-        return { html, nextIndex: i };
+        return { html: html, nextIndex: i };
     }
 
     function parseMarkdown(md) {
@@ -192,7 +285,7 @@ Date: {{date}}
     }
 
     function extractVariables(text) {
-        let vars = {};
+        const vars = {};
         const next = text.replace(/:::variables\s*\n([\s\S]*?)\n:::/g, function (_, body) {
             body.split('\n').forEach((line) => {
                 const sep = line.indexOf(':');
@@ -204,7 +297,7 @@ Date: {{date}}
             });
             return '';
         });
-        return { text: next, vars };
+        return { text: next, vars: vars };
     }
 
     function substitute(text, vars) {
@@ -250,8 +343,30 @@ Date: {{date}}
         const extracted = extractVariables(markdown);
         const mergedVars = Object.assign({}, extracted.vars, variables || {});
         const substituted = substitute(extracted.text, mergedVars);
-        const blocksApplied = applyCustomBlocks(substituted);
-        return parseMarkdown(blocksApplied);
+        const withBlocks = applyCustomBlocks(substituted);
+        return parseMarkdown(withBlocks);
+    }
+
+    function renderSignatureSummary(signatures) {
+        if (!signatures || signatures.length === 0) {
+            return '<div class="sow-signatures"><p><strong>Signature status:</strong> Unsigned draft</p></div>';
+        }
+        let html = '<div class="sow-signatures"><h3>Recorded Signatures</h3><ul>';
+        signatures.forEach((sig) => {
+            html += '<li><strong>' + inline(sig.role) + ':</strong> ' + inline(sig.signerName) + ' (' + inline(new Date(sig.signedAt).toLocaleString()) + ')</li>';
+        });
+        html += '</ul></div>';
+        return html;
+    }
+
+    function downloadFile(filename, content, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     function openDb() {
@@ -264,6 +379,9 @@ Date: {{date}}
                 }
                 if (!db.objectStoreNames.contains(TEMPLATE_STORE)) {
                     db.createObjectStore(TEMPLATE_STORE, { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains(CLIENT_STORE)) {
+                    db.createObjectStore(CLIENT_STORE, { keyPath: 'id' });
                 }
             };
             req.onsuccess = function () { resolve(req.result); };
@@ -298,77 +416,372 @@ Date: {{date}}
         });
     }
 
+    function getRevisionByNumber(doc, revisionNumber) {
+        return doc.revisions.find((rev) => rev.revision === revisionNumber) || null;
+    }
+    function migrateDoc(doc) {
+        if (doc.revisions && Array.isArray(doc.revisions)) {
+            if (!doc.clausePack) {
+                doc.clausePack = 'US_BASE';
+            }
+            if (!doc.currentRevision) {
+                doc.currentRevision = doc.revisions[doc.revisions.length - 1].revision;
+            }
+            return doc;
+        }
+
+        const revision = {
+            revision: 1,
+            markdown: doc.markdown || SAMPLE_MARKDOWN,
+            variables: doc.variables || {
+                client_name: '',
+                project_name: 'Untitled SOW',
+                consultant_name: '',
+                date: today(),
+            },
+            templateId: doc.templateId || 'modern',
+            pageSize: doc.pageSize || 'Letter',
+            status: 'draft',
+            signatures: [],
+            changeSummary: '',
+            createdAt: doc.createdAt || nowIso(),
+        };
+
+        return {
+            id: doc.id || uid('doc'),
+            title: doc.title || revision.variables.project_name || 'Untitled SOW',
+            clientId: doc.clientId || '',
+            clausePack: 'US_BASE',
+            currentRevision: 1,
+            revisions: [revision],
+            createdAt: doc.createdAt || nowIso(),
+            updatedAt: doc.updatedAt || nowIso(),
+        };
+    }
+
     async function ensureSeedDocument() {
-        const docs = await dbGetAll(DOC_STORE);
+        const docs = (await dbGetAll(DOC_STORE)).map(migrateDoc);
         if (docs.length > 0) {
-            const sorted = docs.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-            return sorted[0];
+            docs.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+            await dbPut(DOC_STORE, docs[0]);
+            return docs[0];
         }
 
         const seed = {
-            id: uid(),
-            title: 'Untitled SOW',
-            markdown: SAMPLE_MARKDOWN,
-            variables: {
-                client_name: 'Acme Corp',
-                project_name: 'Website Redesign',
-                consultant_name: 'Your Name',
-                date: today(),
-            },
-            templateId: 'modern',
-            pageSize: 'Letter',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            revision: 1,
+            id: uid('doc'),
+            title: 'Website Redesign SOW',
+            clientId: '',
+            clausePack: 'US_BASE',
+            currentRevision: 1,
+            revisions: [
+                {
+                    revision: 1,
+                    markdown: SAMPLE_MARKDOWN,
+                    variables: {
+                        client_name: 'Acme Corp',
+                        project_name: 'Website Redesign',
+                        consultant_name: 'Your Name',
+                        date: today(),
+                    },
+                    templateId: 'modern',
+                    pageSize: 'Letter',
+                    status: 'draft',
+                    signatures: [],
+                    changeSummary: '',
+                    createdAt: nowIso(),
+                },
+            ],
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
         };
 
         await dbPut(DOC_STORE, seed);
         return seed;
     }
 
-    function bindDocToUi() {
-        el.editor.value = state.currentDoc.markdown;
-        el.templateSelect.value = state.currentDoc.templateId || 'modern';
-        el.pageSize.value = state.currentDoc.pageSize || 'Letter';
-        el.docName.textContent = state.currentDoc.title || 'Untitled SOW';
-
-        el.varInputs.forEach((input) => {
-            const key = input.dataset.var;
-            input.value = state.currentDoc.variables[key] || '';
-        });
-
-        updateCharCount();
-        renderPreview();
-    }
-
-    function updateCharCount() {
-        el.charCount.textContent = String(el.editor.value.length) + ' chars';
+    function getActiveRevision() {
+        if (!state.currentDoc) {
+            return null;
+        }
+        return getRevisionByNumber(state.currentDoc, state.activeRevision || state.currentDoc.currentRevision);
     }
 
     function setSaveStatus(text) {
         el.saveStatus.textContent = text;
     }
 
+    function updateCharCount() {
+        el.charCount.textContent = String(el.editor.value.length) + ' chars';
+    }
+
+    function collectVariables() {
+        const vars = {};
+        el.varInputs.forEach((input) => {
+            vars[input.dataset.var] = input.value;
+        });
+        return vars;
+    }
+
+    function syncStatusUi(revision) {
+        el.revisionLabel.textContent = 'Revision ' + revision.revision;
+        el.docStatus.textContent = revision.status;
+        el.docStatus.className = 'status status-' + revision.status;
+
+        const readOnly = revision.revision !== state.currentDoc.currentRevision || revision.status === 'signed';
+        el.editor.readOnly = readOnly;
+        if (readOnly) {
+            el.saveStatus.textContent = revision.status === 'signed'
+                ? 'Signed revisions are locked. Create a new revision to edit.'
+                : 'Viewing previous revision (read-only).';
+        }
+    }
+
+    function renderGuardrails(markdown, revision) {
+        const lower = (markdown || '').toLowerCase();
+        el.guardrailList.innerHTML = '';
+        let missing = 0;
+
+        REQUIRED_GUARDRAILS.forEach((item) => {
+            const ok = item.test(lower);
+            if (!ok) {
+                missing += 1;
+            }
+            const li = document.createElement('li');
+            li.className = ok ? 'guardrail-ok' : 'guardrail-missing';
+            li.textContent = (ok ? 'OK: ' : 'Missing: ') + item.label;
+            el.guardrailList.appendChild(li);
+        });
+
+        const hasConsultantSignature = revision.signatures.some((sig) => sig.role === 'consultant');
+        const sigLi = document.createElement('li');
+        const sigOk = hasConsultantSignature;
+        sigLi.className = sigOk ? 'guardrail-ok' : 'guardrail-missing';
+        sigLi.textContent = (sigOk ? 'OK: ' : 'Missing: ') + 'Consultant signature';
+        el.guardrailList.appendChild(sigLi);
+        if (!sigOk) {
+            missing += 1;
+        }
+
+        if (missing === 0) {
+            const allGood = document.createElement('li');
+            allGood.className = 'guardrail-ok';
+            allGood.textContent = 'Ready to sign and export';
+            el.guardrailList.appendChild(allGood);
+        }
+    }
+
+    function renderRevisionList() {
+        const doc = state.currentDoc;
+        const active = getActiveRevision();
+        el.revisionList.innerHTML = '';
+
+        const revisions = doc.revisions.slice().sort((a, b) => b.revision - a.revision);
+        revisions.forEach((rev) => {
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            if (active && active.revision === rev.revision) {
+                btn.classList.add('active');
+            }
+            btn.innerHTML = 'R' + rev.revision + ' - ' + rev.status + '<span class="revision-meta">' + new Date(rev.createdAt).toLocaleString() + '</span>';
+            btn.addEventListener('click', function () {
+                state.activeRevision = rev.revision;
+                bindDocToUi();
+            });
+            li.appendChild(btn);
+            el.revisionList.appendChild(li);
+        });
+    }
+
+    function renderDocList() {
+        dbGetAll(DOC_STORE).then((docs) => {
+            const normalized = docs.map(migrateDoc).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+            el.docList.innerHTML = '';
+            normalized.forEach((doc) => {
+                const li = document.createElement('li');
+                const btn = document.createElement('button');
+                if (state.currentDoc && state.currentDoc.id === doc.id) {
+                    btn.classList.add('active');
+                }
+                btn.textContent = doc.title || 'Untitled SOW';
+                btn.addEventListener('click', function () {
+                    state.currentDoc = doc;
+                    state.activeRevision = doc.currentRevision;
+                    bindDocToUi();
+                    dbPut(DOC_STORE, state.currentDoc).catch(console.error);
+                });
+                li.appendChild(btn);
+                el.docList.appendChild(li);
+            });
+        }).catch(console.error);
+    }
+
+    function renderPreview() {
+        const revision = getActiveRevision();
+        if (!revision) {
+            return;
+        }
+
+        const html = renderDocument(el.editor.value, collectVariables());
+        const signatureHtml = renderSignatureSummary(revision.signatures);
+
+        el.preview.className = 'preview theme-' + el.templateSelect.value;
+        el.preview.innerHTML = html + signatureHtml;
+        renderGuardrails(el.editor.value, revision);
+    }
+
+    function bindClientForm(clientId) {
+        const client = state.clients.find((c) => c.id === clientId) || null;
+        if (!client) {
+            el.clientLegalName.value = '';
+            el.clientContactName.value = '';
+            el.clientEmail.value = '';
+            el.clientState.value = 'OTHER';
+            return;
+        }
+
+        el.clientLegalName.value = client.legalName || '';
+        el.clientContactName.value = client.contactName || '';
+        el.clientEmail.value = client.email || '';
+        el.clientState.value = client.state || 'OTHER';
+    }
+
+    function renderClientSelect() {
+        const currentId = state.currentDoc ? (state.currentDoc.clientId || '') : '';
+        el.clientSelect.innerHTML = '<option value="">No client selected</option>';
+        state.clients.sort((a, b) => (a.legalName || '').localeCompare(b.legalName || '')).forEach((client) => {
+            const option = document.createElement('option');
+            option.value = client.id;
+            option.textContent = client.legalName;
+            if (client.id === currentId) {
+                option.selected = true;
+            }
+            el.clientSelect.appendChild(option);
+        });
+        bindClientForm(currentId);
+    }
+
+    function bindDocToUi() {
+        const revision = getActiveRevision();
+        if (!revision) {
+            return;
+        }
+
+        el.editor.value = revision.markdown;
+        el.templateSelect.value = revision.templateId || 'modern';
+        el.pageSize.value = revision.pageSize || 'Letter';
+        el.clausePack.value = state.currentDoc.clausePack || 'US_BASE';
+        el.docName.textContent = state.currentDoc.title || 'Untitled SOW';
+
+        el.varInputs.forEach((input) => {
+            const key = input.dataset.var;
+            input.value = revision.variables[key] || '';
+        });
+
+        updateCharCount();
+        syncStatusUi(revision);
+        renderPreview();
+        renderRevisionList();
+        renderClientSelect();
+    }
+
+    function normalizeClausePackBlock(markdown, clausePackKey) {
+        const clauseBody = CLAUSE_PACKS[clausePackKey] || CLAUSE_PACKS.US_BASE;
+        const wrapped = CLAUSE_MARKER_START + '\n' + clauseBody + '\n' + CLAUSE_MARKER_END;
+        const re = new RegExp(CLAUSE_MARKER_START + '[\\s\\S]*?' + CLAUSE_MARKER_END, 'm');
+
+        if (re.test(markdown)) {
+            return markdown.replace(re, wrapped);
+        }
+        return markdown + '\n\n' + wrapped + '\n';
+    }
+
+    function setRevisionFromUi(revision) {
+        revision.markdown = el.editor.value;
+        revision.variables = collectVariables();
+        revision.templateId = el.templateSelect.value;
+        revision.pageSize = el.pageSize.value;
+    }
+
+    function createRevisionFromCurrent(reason) {
+        const doc = state.currentDoc;
+        const current = getRevisionByNumber(doc, doc.currentRevision);
+        if (!current) {
+            return null;
+        }
+
+        if (current.status === 'draft') {
+            current.status = 'superseded';
+        }
+
+        const nextRevisionNumber = doc.revisions.reduce((max, rev) => Math.max(max, rev.revision), 0) + 1;
+        const next = {
+            revision: nextRevisionNumber,
+            markdown: current.markdown,
+            variables: Object.assign({}, current.variables),
+            templateId: current.templateId,
+            pageSize: current.pageSize,
+            status: 'draft',
+            signatures: [],
+            changeSummary: reason || 'New revision',
+            createdAt: nowIso(),
+        };
+
+        doc.revisions.push(next);
+        doc.currentRevision = next.revision;
+        doc.updatedAt = nowIso();
+        state.activeRevision = next.revision;
+
+        bindDocToUi();
+        queueSave();
+        return next;
+    }
+
+    function ensureEditableCurrent() {
+        const doc = state.currentDoc;
+        const active = getActiveRevision();
+        if (!doc || !active) {
+            return null;
+        }
+
+        if (active.revision !== doc.currentRevision) {
+            const shouldSwitch = window.confirm('This revision is read-only. Switch to the current revision?');
+            if (!shouldSwitch) {
+                return null;
+            }
+            state.activeRevision = doc.currentRevision;
+            bindDocToUi();
+        }
+
+        const current = getRevisionByNumber(doc, doc.currentRevision);
+        if (!current) {
+            return null;
+        }
+
+        if (current.status === 'signed') {
+            return createRevisionFromCurrent('Auto-created from signed revision for editing');
+        }
+
+        return current;
+    }
     async function saveCurrentDoc() {
         if (!state.currentDoc) {
             return;
         }
 
-        state.currentDoc.markdown = el.editor.value;
-        state.currentDoc.templateId = el.templateSelect.value;
-        state.currentDoc.pageSize = el.pageSize.value;
-        state.currentDoc.variables = {};
-        el.varInputs.forEach((input) => {
-            state.currentDoc.variables[input.dataset.var] = input.value;
-        });
+        const active = getActiveRevision();
+        if (!active) {
+            return;
+        }
 
-        state.currentDoc.title = state.currentDoc.variables.project_name || 'Untitled SOW';
-        state.currentDoc.updatedAt = new Date().toISOString();
-        state.currentDoc.revision = (state.currentDoc.revision || 0) + 1;
+        if (active.revision === state.currentDoc.currentRevision && active.status !== 'signed') {
+            setRevisionFromUi(active);
+            state.currentDoc.title = active.variables.project_name || 'Untitled SOW';
+            state.currentDoc.updatedAt = nowIso();
+            el.docName.textContent = state.currentDoc.title;
+        }
 
         await dbPut(DOC_STORE, state.currentDoc);
-        el.docName.textContent = state.currentDoc.title;
-        await renderDocList();
+        renderDocList();
         setSaveStatus('Saved locally at ' + new Date().toLocaleTimeString());
     }
 
@@ -383,26 +796,18 @@ Date: {{date}}
         }, SAVE_DEBOUNCE_MS);
     }
 
-    function renderPreview() {
-        const html = renderDocument(el.editor.value, collectVariables());
-        el.preview.className = 'preview theme-' + el.templateSelect.value;
-        el.preview.innerHTML = html;
-    }
-
-    function collectVariables() {
-        const vars = {};
-        el.varInputs.forEach((input) => {
-            vars[input.dataset.var] = input.value;
-        });
-        return vars;
-    }
-
     function insertSnippet(name) {
+        const revision = ensureEditableCurrent();
+        if (!revision) {
+            return;
+        }
+
         const snippets = {
             pricing: '\n:::pricing\n| Item | Hours | Rate | Total |\n|---|---:|---:|---:|\n| Build | 20 | $150 | $3000 |\n| QA | 10 | $150 | $1500 |\n| **Total** | **30** | | **$4500** |\n:::\n',
             timeline: '\n:::timeline\n- Week 1-2: Discovery\n- Week 3-6: Development\n- Week 7-8: Launch\n:::\n',
             signature: '\n:::signature\nClient: {{client_name}}\nDate: {{date}}\n---\nConsultant: {{consultant_name}}\nDate: {{date}}\n:::\n',
         };
+
         const snippet = snippets[name];
         if (!snippet) {
             return;
@@ -413,11 +818,271 @@ Date: {{date}}
         el.editor.value = el.editor.value.slice(0, start) + snippet + el.editor.value.slice(end);
         el.editor.selectionStart = el.editor.selectionEnd = start + snippet.length;
         el.editor.focus();
+        setRevisionFromUi(revision);
         updateCharCount();
         renderPreview();
         queueSave();
     }
 
+    function applyClausePack() {
+        const revision = ensureEditableCurrent();
+        if (!revision) {
+            return;
+        }
+
+        const pack = el.clausePack.value;
+        const nextMarkdown = normalizeClausePackBlock(el.editor.value, pack);
+        state.currentDoc.clausePack = pack;
+
+        el.editor.value = nextMarkdown;
+        setRevisionFromUi(revision);
+        renderPreview();
+        queueSave();
+    }
+
+    function signRevision(role) {
+        const revision = getActiveRevision();
+        if (!revision) {
+            return;
+        }
+
+        if (revision.revision !== state.currentDoc.currentRevision) {
+            alert('You can only sign the current revision.');
+            return;
+        }
+
+        if (revision.status === 'signed') {
+            alert('This revision is already fully signed. Create a new revision to change it.');
+            return;
+        }
+
+        const defaultName = role === 'consultant'
+            ? (collectVariables().consultant_name || '')
+            : (collectVariables().client_name || '');
+        const signerName = prompt('Enter signer name for ' + role + ':', defaultName);
+        if (!signerName) {
+            return;
+        }
+
+        revision.signatures = revision.signatures.filter((sig) => sig.role !== role);
+        revision.signatures.push({
+            role: role,
+            signerName: signerName.trim(),
+            signedAt: nowIso(),
+            method: 'native_esign',
+        });
+
+        const hasConsultant = revision.signatures.some((sig) => sig.role === 'consultant');
+        const hasClient = revision.signatures.some((sig) => sig.role === 'client');
+        revision.status = hasConsultant && hasClient ? 'signed' : 'draft';
+
+        renderPreview();
+        syncStatusUi(revision);
+        queueSave();
+    }
+
+    function addChangeOrder() {
+        const revision = ensureEditableCurrent();
+        if (!revision) {
+            return;
+        }
+
+        const template = `\n## Change Order ${state.currentDoc.currentRevision}\n\n- Requested by:\n- Date: ${today()}\n- Scope Delta:\n- Schedule Impact:\n- Fee Impact:\n\nApproved by written confirmation from both parties.\n`;
+        el.editor.value += template;
+        setRevisionFromUi(revision);
+        renderPreview();
+        queueSave();
+    }
+
+    async function saveClient() {
+        const legalName = (el.clientLegalName.value || '').trim();
+        if (!legalName) {
+            alert('Client legal name is required.');
+            return;
+        }
+
+        let clientId = el.clientSelect.value;
+        let existing = clientId ? await dbGet(CLIENT_STORE, clientId) : null;
+        if (!existing) {
+            clientId = uid('client');
+            existing = { id: clientId, createdAt: nowIso() };
+        }
+
+        const client = {
+            id: clientId,
+            legalName: legalName,
+            contactName: (el.clientContactName.value || '').trim(),
+            email: (el.clientEmail.value || '').trim(),
+            state: el.clientState.value || 'OTHER',
+            updatedAt: nowIso(),
+            createdAt: existing.createdAt || nowIso(),
+        };
+
+        await dbPut(CLIENT_STORE, client);
+        state.clients = await dbGetAll(CLIENT_STORE);
+
+        state.currentDoc.clientId = client.id;
+        const revision = ensureEditableCurrent();
+        if (revision) {
+            revision.variables.client_name = client.legalName;
+            el.varInputs.forEach((input) => {
+                if (input.dataset.var === 'client_name') {
+                    input.value = client.legalName;
+                }
+            });
+        }
+
+        renderClientSelect();
+        bindClientForm(client.id);
+        renderPreview();
+        queueSave();
+    }
+
+    async function onClientSelected() {
+        const clientId = el.clientSelect.value;
+        state.currentDoc.clientId = clientId;
+        bindClientForm(clientId);
+
+        const revision = ensureEditableCurrent();
+        if (revision && clientId) {
+            const client = state.clients.find((c) => c.id === clientId);
+            if (client) {
+                revision.variables.client_name = client.legalName;
+                el.varInputs.forEach((input) => {
+                    if (input.dataset.var === 'client_name') {
+                        input.value = client.legalName;
+                    }
+                });
+                renderPreview();
+            }
+        }
+
+        queueSave();
+    }
+
+    function exportMarkdown() {
+        const revision = getActiveRevision();
+        if (!revision) {
+            return;
+        }
+        const filename = (state.currentDoc.title || 'sow').replace(/\s+/g, '_') + '_R' + revision.revision + '.md';
+        downloadFile(filename, revision.markdown, 'text/markdown;charset=utf-8');
+    }
+
+    function exportJson() {
+        const packageObj = {
+            exportedAt: nowIso(),
+            doc: state.currentDoc,
+            clients: state.clients,
+        };
+        const filename = (state.currentDoc.title || 'sow').replace(/\s+/g, '_') + '.json';
+        downloadFile(filename, JSON.stringify(packageObj, null, 2), 'application/json;charset=utf-8');
+    }
+
+    function importFile(file) {
+        if (!file) {
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async function () {
+            try {
+                const text = String(reader.result || '');
+                if (file.name.toLowerCase().endsWith('.md')) {
+                    const doc = {
+                        id: uid('doc'),
+                        title: file.name.replace(/\.md$/i, ''),
+                        clientId: '',
+                        clausePack: 'US_BASE',
+                        currentRevision: 1,
+                        revisions: [{
+                            revision: 1,
+                            markdown: text,
+                            variables: {
+                                client_name: '',
+                                project_name: file.name.replace(/\.md$/i, ''),
+                                consultant_name: '',
+                                date: today(),
+                            },
+                            templateId: 'modern',
+                            pageSize: 'Letter',
+                            status: 'draft',
+                            signatures: [],
+                            changeSummary: 'Imported from markdown',
+                            createdAt: nowIso(),
+                        }],
+                        createdAt: nowIso(),
+                        updatedAt: nowIso(),
+                    };
+                    await dbPut(DOC_STORE, doc);
+                    state.currentDoc = doc;
+                    state.activeRevision = 1;
+                    bindDocToUi();
+                    renderDocList();
+                    return;
+                }
+
+                const parsed = JSON.parse(text);
+                const incomingDoc = migrateDoc(parsed.doc || parsed);
+                await dbPut(DOC_STORE, incomingDoc);
+
+                if (Array.isArray(parsed.clients)) {
+                    for (let i = 0; i < parsed.clients.length; i += 1) {
+                        const client = parsed.clients[i];
+                        if (client && client.id) {
+                            await dbPut(CLIENT_STORE, client);
+                        }
+                    }
+                }
+
+                state.clients = await dbGetAll(CLIENT_STORE);
+                state.currentDoc = incomingDoc;
+                state.activeRevision = incomingDoc.currentRevision;
+                bindDocToUi();
+                renderDocList();
+            } catch (err) {
+                console.error(err);
+                alert('Import failed. Check file format.');
+            }
+        };
+
+        reader.readAsText(file);
+    }
+
+    async function createNewDocument() {
+        const doc = {
+            id: uid('doc'),
+            title: 'Untitled SOW',
+            clientId: '',
+            clausePack: 'US_BASE',
+            currentRevision: 1,
+            revisions: [{
+                revision: 1,
+                markdown: SAMPLE_MARKDOWN,
+                variables: {
+                    client_name: '',
+                    project_name: 'Untitled SOW',
+                    consultant_name: '',
+                    date: today(),
+                },
+                templateId: 'modern',
+                pageSize: 'Letter',
+                status: 'draft',
+                signatures: [],
+                changeSummary: '',
+                createdAt: nowIso(),
+            }],
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+        };
+
+        await dbPut(DOC_STORE, doc);
+        state.currentDoc = doc;
+        state.activeRevision = doc.currentRevision;
+        bindDocToUi();
+        renderDocList();
+        setSaveStatus('Created new local document');
+    }
     function getThemeCss(theme) {
         if (theme === 'classic') {
             return 'body { font-family: Georgia, "Times New Roman", serif; } h1 { text-align: center; border-bottom: 2px solid #111; }';
@@ -444,7 +1109,7 @@ body { color: #0f172a; line-height: 1.55; }
 h1,h2,h3 { margin-top: 0.8rem; }
 table { width: 100%; border-collapse: collapse; margin: 0.6rem 0; }
 th,td { border: 1px solid #cbd5e1; padding: 0.4rem; text-align: left; }
-.sow-timeline,.sow-pricing,.sow-signatures { margin: 0.8rem 0; padding: 0.6rem; border: 1px solid #dbe1ea; border-radius: 6px; }
+.sow-timeline,.sow-pricing,.sow-signatures,.sow-legal { margin: 0.8rem 0; padding: 0.6rem; border: 1px solid #dbe1ea; border-radius: 6px; }
 .sig-block { display: inline-block; width: 45%; margin-right: 4%; vertical-align: top; }
 .sig-line { border-bottom: 1px solid #111827; margin-top: 1.2rem; }
 ${getThemeCss(theme)}
@@ -476,6 +1141,7 @@ ${el.preview.innerHTML}
             return;
         }
 
+        const revision = getActiveRevision();
         const response = await fetch(baseUrl.replace(/\/$/, '') + '/v1/publish', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -483,6 +1149,8 @@ ${el.preview.innerHTML}
                 title: collectVariables().project_name || 'Statement of Work',
                 html: el.preview.innerHTML,
                 expires_in_days: 30,
+                revision: revision ? revision.revision : null,
+                signed_only: revision ? revision.status === 'signed' : false,
             }),
         });
 
@@ -513,72 +1181,52 @@ ${el.preview.innerHTML}
         el.btnPublish.title = configured ? 'Publish read-only link' : 'Configure sharing plugin URL first';
     }
 
-    async function renderDocList() {
-        const docs = (await dbGetAll(DOC_STORE)).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-        el.docList.innerHTML = '';
-        docs.forEach((doc) => {
-            const li = document.createElement('li');
-            const btn = document.createElement('button');
-            btn.textContent = doc.title || 'Untitled SOW';
-            if (state.currentDoc && state.currentDoc.id === doc.id) {
-                btn.classList.add('active');
-            }
-            btn.addEventListener('click', async function () {
-                const next = await dbGet(DOC_STORE, doc.id);
-                if (next) {
-                    state.currentDoc = next;
-                    bindDocToUi();
-                    renderDocList();
-                }
-            });
-            li.appendChild(btn);
-            el.docList.appendChild(li);
-        });
-    }
-
-    async function createNewDocument() {
-        const doc = {
-            id: uid(),
-            title: 'Untitled SOW',
-            markdown: SAMPLE_MARKDOWN,
-            variables: {
-                client_name: '',
-                project_name: 'Untitled SOW',
-                consultant_name: '',
-                date: today(),
-            },
-            templateId: 'modern',
-            pageSize: 'Letter',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            revision: 1,
-        };
-
-        await dbPut(DOC_STORE, doc);
-        state.currentDoc = doc;
-        bindDocToUi();
-        await renderDocList();
-        setSaveStatus('Created new local document');
-    }
-
     function setupEvents() {
         el.editor.addEventListener('input', function () {
+            const revision = ensureEditableCurrent();
+            if (!revision) {
+                bindDocToUi();
+                return;
+            }
+
+            setRevisionFromUi(revision);
             updateCharCount();
             renderPreview();
             queueSave();
         });
 
         el.templateSelect.addEventListener('change', function () {
+            const revision = ensureEditableCurrent();
+            if (!revision) {
+                bindDocToUi();
+                return;
+            }
+            setRevisionFromUi(revision);
             renderPreview();
             queueSave();
         });
 
-        el.pageSize.addEventListener('change', queueSave);
+        el.pageSize.addEventListener('change', function () {
+            const revision = ensureEditableCurrent();
+            if (!revision) {
+                bindDocToUi();
+                return;
+            }
+            setRevisionFromUi(revision);
+            queueSave();
+        });
 
         el.varInputs.forEach((input) => {
             input.addEventListener('input', function () {
+                const revision = ensureEditableCurrent();
+                if (!revision) {
+                    bindDocToUi();
+                    return;
+                }
+                setRevisionFromUi(revision);
                 if (input.dataset.var === 'project_name') {
-                    el.docName.textContent = input.value || 'Untitled SOW';
+                    state.currentDoc.title = input.value || 'Untitled SOW';
+                    el.docName.textContent = state.currentDoc.title;
                 }
                 renderPreview();
                 queueSave();
@@ -594,16 +1242,49 @@ ${el.preview.innerHTML}
         el.btnSave.addEventListener('click', function () {
             saveCurrentDoc().catch(console.error);
         });
+
         el.btnNew.addEventListener('click', function () {
             createNewDocument().catch(console.error);
         });
+
+        el.btnNewRevision.addEventListener('click', function () {
+            createRevisionFromCurrent('Manual new revision');
+        });
+
+        el.btnApplyClausePack.addEventListener('click', applyClausePack);
+        el.btnChangeOrder.addEventListener('click', addChangeOrder);
+        el.btnSignConsultant.addEventListener('click', function () { signRevision('consultant'); });
+        el.btnSignClient.addEventListener('click', function () { signRevision('client'); });
+
+        el.btnSaveClient.addEventListener('click', function () {
+            saveClient().catch(console.error);
+        });
+
+        el.clientSelect.addEventListener('change', function () {
+            onClientSelected().catch(console.error);
+        });
+
         el.btnExport.addEventListener('click', openPrintWindow);
+        el.btnExportMd.addEventListener('click', exportMarkdown);
+        el.btnExportJson.addEventListener('click', exportJson);
+
+        el.btnImport.addEventListener('click', function () {
+            el.fileImport.value = '';
+            el.fileImport.click();
+        });
+
+        el.fileImport.addEventListener('change', function () {
+            const file = el.fileImport.files && el.fileImport.files[0];
+            importFile(file);
+        });
+
         el.btnPublish.addEventListener('click', function () {
             publishDocument().catch(function (err) {
                 console.error(err);
                 alert('Publish failed.');
             });
         });
+
         el.btnSettings.addEventListener('click', configureSharing);
 
         document.addEventListener('keydown', function (event) {
@@ -620,9 +1301,11 @@ ${el.preview.innerHTML}
 
     async function init() {
         state.db = await openDb();
+        state.clients = await dbGetAll(CLIENT_STORE);
         state.currentDoc = await ensureSeedDocument();
+        state.activeRevision = state.currentDoc.currentRevision;
         bindDocToUi();
-        await renderDocList();
+        renderDocList();
         setupEvents();
         syncSharingState();
     }

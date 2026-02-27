@@ -8,6 +8,11 @@ Production-focused, fee-free Statement of Work creator.
 - In-browser markdown rendering (including `:::pricing`, `:::timeline`, `:::signature`, `:::variables`).
 - Instant print-to-PDF flow via browser print.
 - Optional sharing plugin endpoints for expiring read-only links.
+- Native signature capture metadata (client + consultant) with signed revision locking.
+- Revision history with read-only prior revisions and manual/automatic revision fork.
+- Client profiles (local) with variable autofill.
+- US clause packs (`US_BASE`, `US_NY`, `US_CA`) and required-section guardrail checks.
+- Markdown/JSON import and export for portability.
 
 ## Quick start
 
@@ -23,10 +28,10 @@ Open `http://localhost:5000`.
 ## Core architecture
 
 - `templates/editor.html`: single-page app shell.
-- `static/js/editor.js`: local-first app logic, IndexedDB storage, markdown renderer, print export.
-- `static/css/app.css`: responsive editor and preview styles.
+- `static/js/editor.js`: local-first app logic, IndexedDB storage, markdown renderer, signatures, clients, revisions, clause packs.
+- `static/css/app.css`: responsive editor, status/guardrail/revision UI, and print styles.
 - `app/routes.py`: optional publish plugin APIs and public read-only route.
-- `app/models.py`: SQLite schema (`templates`, `published_docs`).
+- `app/models.py`: SQLite schema (`templates`, `published_docs`) for backend-compatible features.
 
 ## Optional sharing plugin API
 

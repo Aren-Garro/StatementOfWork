@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SOW Creator - Local First</title>
-    <meta name="description" content="Local-first Statement of Work creator with instant PDF export.">
+    <meta name="description" content="Local-first Statement of Work creator with signatures, revisions, and instant PDF export.">
     <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body>
     <header class="app-header">
         <div class="brand">
             <h1>SOW Creator</h1>
-            <p>Local-first editor with instant PDF export</p>
+            <p>Local-first workflow for 1099 consultants</p>
         </div>
         <div class="controls">
             <select id="template-select" class="control-select" aria-label="Template">
@@ -24,11 +24,19 @@
                 <option value="A4">A4</option>
                 <option value="Legal">Legal</option>
             </select>
-            <button id="btn-new" class="btn btn-secondary">New</button>
-            <button id="btn-save" class="btn btn-secondary">Save</button>
+            <button id="btn-new" class="btn">New</button>
+            <button id="btn-new-revision" class="btn">New Revision</button>
+            <button id="btn-save" class="btn">Save</button>
+            <button id="btn-change-order" class="btn">Change Order</button>
+            <button id="btn-sign-consultant" class="btn">Sign as Consultant</button>
+            <button id="btn-sign-client" class="btn">Sign as Client</button>
             <button id="btn-export" class="btn btn-primary">Print / PDF</button>
-            <button id="btn-settings" class="btn btn-secondary">Sharing</button>
-            <button id="btn-publish" class="btn btn-secondary" title="Optional sharing plugin">Publish</button>
+            <button id="btn-export-md" class="btn">Export .md</button>
+            <button id="btn-export-json" class="btn">Export .json</button>
+            <button id="btn-import" class="btn">Import</button>
+            <button id="btn-settings" class="btn">Sharing</button>
+            <button id="btn-publish" class="btn" title="Optional sharing plugin">Publish</button>
+            <input id="file-import" type="file" accept=".json,.md" hidden>
         </div>
     </header>
 
@@ -37,7 +45,27 @@
             <section>
                 <h2>Document</h2>
                 <p id="doc-name" class="doc-name"></p>
+                <p id="revision-label" class="muted">Revision 1</p>
+                <p id="doc-status" class="status status-draft">Draft</p>
                 <p id="save-status" class="muted">Ready</p>
+            </section>
+
+            <section>
+                <h2>Client</h2>
+                <select id="client-select" class="control-select full-width">
+                    <option value="">No client selected</option>
+                </select>
+                <label>Legal Name<input type="text" id="client-legal-name" placeholder="Acme Corp LLC"></label>
+                <label>Contact Name<input type="text" id="client-contact-name" placeholder="Jane Doe"></label>
+                <label>Email<input type="email" id="client-email" placeholder="jane@acme.com"></label>
+                <label>State
+                    <select id="client-state" class="control-select full-width">
+                        <option value="OTHER">Other</option>
+                        <option value="NY">NY</option>
+                        <option value="CA">CA</option>
+                    </select>
+                </label>
+                <button id="btn-save-client" class="btn btn-small">Save Client</button>
             </section>
 
             <section>
@@ -49,6 +77,22 @@
             </section>
 
             <section>
+                <h2>Clause Pack</h2>
+                <select id="clause-pack" class="control-select full-width">
+                    <option value="US_BASE">US Federal Baseline</option>
+                    <option value="US_NY">US + New York</option>
+                    <option value="US_CA">US + California</option>
+                </select>
+                <button id="btn-apply-clause-pack" class="btn btn-small">Insert / Update Clauses</button>
+                <p class="muted legal-note">Template guidance only. Not legal advice.</p>
+            </section>
+
+            <section>
+                <h2>Guardrails</h2>
+                <ul id="guardrail-list" class="guardrail-list"></ul>
+            </section>
+
+            <section>
                 <h2>Snippets</h2>
                 <button class="btn btn-small" data-snippet="pricing">Pricing</button>
                 <button class="btn btn-small" data-snippet="timeline">Timeline</button>
@@ -56,7 +100,12 @@
             </section>
 
             <section>
-                <h2>Local Docs</h2>
+                <h2>Revisions</h2>
+                <ul id="revision-list" class="revision-list"></ul>
+            </section>
+
+            <section>
+                <h2>Local Documents</h2>
                 <ul id="doc-list" class="doc-list"></ul>
             </section>
         </aside>
