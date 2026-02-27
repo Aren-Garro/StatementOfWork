@@ -38,7 +38,7 @@ Open `http://localhost:5000`.
 Base path: `/plugin`
 
 - `POST /plugin/v1/publish`
-  - Body: `{ "title": "...", "html": "...", "expires_in_days": 30, "revision": 2, "signed": true, "signed_only": true, "jurisdiction": "US_NY", "strict_sanitize": true }`
+  - Body: `{ "title": "...", "html": "...", "expires_in_days": 30, "revision": 2, "signed": true, "signed_only": true, "jurisdiction": "US_NY" }`
   - Returns: `publish_id`, `view_url`, `expires_at`, `revision`, `signed`, `jurisdiction`, `sanitized`
 - `GET /plugin/v1/p/<publish_id>`
   - Returns publish metadata.
@@ -59,6 +59,8 @@ Base path: `/plugin`
 - CAPTCHA gate support for high-volume clients.
 
 Set `PUBLISH_CAPTCHA_TOKEN` in env to enable simple token verification. When set, clients above threshold must send `X-Captcha-Token` with this value.
+
+Set `TRUST_PROXY_HOPS` (default `0`) only when running behind trusted reverse proxies so Flask can safely resolve client IPs from forwarding headers.
 
 ## Environment variables
 

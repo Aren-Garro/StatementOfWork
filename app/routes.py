@@ -115,6 +115,11 @@ def _parse_bool(value, default=False):
     return default
 
 
+def _get_client_ip() -> str:
+    """Return client IP after optional trusted-proxy normalization."""
+    return (request.remote_addr or 'unknown').strip()
+
+
 # Page Routes
 @main_bp.route('/')
 def index():
@@ -248,7 +253,7 @@ def delete_template(template_id):
 @plugin_bp.route('/v1/publish', methods=['POST'])
 def publish_document():
     """Publish a read-only document with expiry."""
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr or 'unknown').split(',')[0].strip()
+    client_ip = _get_client_ip()
 
     if _is_rate_limited(client_ip):
         return jsonify({'error': 'Too many requests'}), 429
@@ -262,8 +267,7 @@ def publish_document():
     data = request.get_json() or {}
     title = (data.get('title') or 'Statement of Work').strip()[:200]
     raw_html = (data.get('html') or '').strip()
-    strict_sanitize = _parse_bool(data.get('strict_sanitize'), True)
-    html = _sanitize_html(raw_html) if strict_sanitize else raw_html
+    html = _sanitize_html(raw_html)
     expires_in_days = _parse_int(data.get('expires_in_days', 30), 30)
     revision = _parse_int(data.get('revision'), None)
     signed = _parse_bool(data.get('signed'), False)
@@ -301,7 +305,7 @@ def publish_document():
             'revision': revision,
             'signed': signed,
             'jurisdiction': jurisdiction,
-            'sanitized': strict_sanitize,
+            'sanitized': True,
         }
     ), 201
 
