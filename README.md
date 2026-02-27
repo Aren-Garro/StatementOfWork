@@ -66,6 +66,14 @@ Set `TRUST_PROXY_HOPS` (default `0`) only when running behind trusted reverse pr
 
 See `.env.example` for defaults.
 
+## Development hooks
+
+```bash
+python -m pip install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
 ## Notes
 
 - Sharing is optional. If no sharing plugin URL is configured in the UI, local editing and PDF export still work fully.
