@@ -1,5 +1,6 @@
 """Routes for the SOW Generator."""
 import io
+import json
 import os
 import re
 import secrets
@@ -8,6 +9,7 @@ from collections import defaultdict, deque
 
 from flask import (
     Blueprint,
+    current_app,
     jsonify,
     render_template,
     request,
@@ -124,6 +126,13 @@ def _read_json_object():
     if isinstance(data, dict):
         return data
     return None
+
+
+def _log_event(level: str, event: str, **fields):
+    logger = current_app.logger
+    payload = {'event': event, **fields}
+    message = json.dumps(payload, sort_keys=True, default=str)
+    getattr(logger, level, logger.info)(message)
 
 
 # Page Routes
@@ -295,12 +304,14 @@ def publish_document():
     client_ip = _get_client_ip()
 
     if _is_rate_limited(client_ip):
+        _log_event('warning', 'plugin.publish.rate_limited', client_ip=client_ip)
         return jsonify({'error': 'Too many requests'}), 429
 
     if _needs_captcha(client_ip):
         required_token = (os.environ.get('PUBLISH_CAPTCHA_TOKEN') or '').strip()
         supplied = (request.headers.get('X-Captcha-Token') or '').strip()
         if required_token and supplied != required_token:
+            _log_event('warning', 'plugin.publish.captcha_failed', client_ip=client_ip)
             return jsonify({'error': 'Captcha verification required'}), 429
 
     data = request.get_json() or {}
@@ -314,12 +325,16 @@ def publish_document():
     jurisdiction = (data.get('jurisdiction') or 'US_BASE').strip()[:32] or 'US_BASE'
 
     if not html:
+        _log_event('info', 'plugin.publish.invalid_html', client_ip=client_ip)
         return jsonify({'error': 'html is required'}), 400
     if signed_only and not signed:
+        _log_event('info', 'plugin.publish.invalid_signed', client_ip=client_ip)
         return jsonify({'error': 'signed_only publish requires signed=true'}), 400
     if revision is not None and revision < 1:
+        _log_event('info', 'plugin.publish.invalid_revision', client_ip=client_ip, revision=revision)
         return jsonify({'error': 'revision must be >= 1 when provided'}), 400
     if jurisdiction not in _ALLOWED_JURISDICTIONS:
+        _log_event('info', 'plugin.publish.invalid_jurisdiction', client_ip=client_ip, jurisdiction=jurisdiction)
         return jsonify({'error': 'invalid jurisdiction'}), 400
 
     expires_in_days = max(1, min(365, expires_in_days))
@@ -336,6 +351,16 @@ def publish_document():
     db.commit()
 
     view_url = f"{request.host_url.rstrip('/')}/p/{doc_id}"
+    _log_event(
+        'info',
+        'plugin.publish.created',
+        client_ip=client_ip,
+        publish_id=doc_id,
+        revision=revision,
+        signed=signed,
+        jurisdiction=jurisdiction,
+        expires_at=expires_at.isoformat(),
+    )
     return jsonify(
         {
             'publish_id': doc_id,
@@ -407,6 +432,7 @@ def plugin_cleanup():
         (now,),
     )
     db.commit()
+    _log_event('info', 'plugin.cleanup.completed', cleaned=cursor.rowcount, scanned=scanned, timestamp=now)
     return jsonify(
         {
             'status': 'ok',
