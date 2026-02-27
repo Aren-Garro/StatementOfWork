@@ -38,8 +38,8 @@ Open `http://localhost:5000`.
 Base path: `/plugin`
 
 - `POST /plugin/v1/publish`
-  - Body: `{ "title": "...", "html": "...", "expires_in_days": 30, "revision": 2, "signed": true, "signed_only": true, "jurisdiction": "US_NY" }`
-  - Returns: `publish_id`, `view_url`, `expires_at`, `revision`, `signed`, `jurisdiction`
+  - Body: `{ "title": "...", "html": "...", "expires_in_days": 30, "revision": 2, "signed": true, "signed_only": true, "jurisdiction": "US_NY", "strict_sanitize": true }`
+  - Returns: `publish_id`, `view_url`, `expires_at`, `revision`, `signed`, `jurisdiction`, `sanitized`
 - `GET /plugin/v1/p/<publish_id>`
   - Returns publish metadata.
 - `DELETE /plugin/v1/p/<publish_id>`
@@ -50,6 +50,7 @@ Base path: `/plugin`
   - Connectivity check for client configuration.
 - `POST /plugin/v1/cleanup`
   - Marks expired published documents as deleted.
+  - Returns: `cleaned`, `scanned`, `timestamp`
 - Public read-only page: `GET /p/<publish_id>`
 
 ## Abuse controls
@@ -77,3 +78,17 @@ python scripts/export_legacy_templates.py --db data/sow.db --out legacy_template
 ```
 
 The output contains `packages[]`; import each package in-app via the Import button.
+
+## Test Configuration
+
+`pytest.ini` is configured to run only `tests/`:
+
+- `--cache-clear`
+
+CI runs pytest with `--basetemp=/tmp/pytest-basetemp` to avoid permission issues in locked workspace folders.
+
+Optional manual browser smoke check:
+
+```bash
+npx playwright test tests/e2e/playwright_smoke.mjs
+```

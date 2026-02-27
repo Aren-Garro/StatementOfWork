@@ -369,6 +369,27 @@ Date: {{date}}
         URL.revokeObjectURL(url);
     }
 
+    function summarizeTextDiff(previousText, currentText) {
+        const previousLines = (previousText || '').split('\n');
+        const currentLines = (currentText || '').split('\n');
+        const previousSet = new Set(previousLines);
+        const currentSet = new Set(currentLines);
+
+        let added = 0;
+        let removed = 0;
+        currentSet.forEach((line) => {
+            if (!previousSet.has(line)) {
+                added += 1;
+            }
+        });
+        previousSet.forEach((line) => {
+            if (!currentSet.has(line)) {
+                removed += 1;
+            }
+        });
+        return { added: added, removed: removed };
+    }
+
     function openDb() {
         return new Promise((resolve, reject) => {
             const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -887,7 +908,10 @@ Date: {{date}}
             return;
         }
 
-        const template = `\n## Change Order ${state.currentDoc.currentRevision}\n\n- Requested by:\n- Date: ${today()}\n- Scope Delta:\n- Schedule Impact:\n- Fee Impact:\n\nApproved by written confirmation from both parties.\n`;
+        const previousRevisionNumber = Math.max(1, state.currentDoc.currentRevision - 1);
+        const previousRevision = getRevisionByNumber(state.currentDoc, previousRevisionNumber) || revision;
+        const diff = summarizeTextDiff(previousRevision.markdown, revision.markdown);
+        const template = `\n## Change Order ${state.currentDoc.currentRevision}\n\n- Requested by:\n- Date: ${today()}\n- Scope Delta:\n- Schedule Impact:\n- Fee Impact:\n- Draft Diff Summary: +${diff.added} lines / -${diff.removed} lines versus Revision ${previousRevision.revision}\n\nApproved by written confirmation from both parties.\n`;
         el.editor.value += template;
         setRevisionFromUi(revision);
         renderPreview();
@@ -988,6 +1012,11 @@ Date: {{date}}
         reader.onload = async function () {
             try {
                 const text = String(reader.result || '');
+                const importSummary = {
+                    docsImported: 0,
+                    clientsImported: 0,
+                    errors: [],
+                };
                 if (file.name.toLowerCase().endsWith('.md')) {
                     const doc = {
                         id: uid('doc'),
@@ -1015,10 +1044,12 @@ Date: {{date}}
                         updatedAt: nowIso(),
                     };
                     await dbPut(DOC_STORE, doc);
+                    importSummary.docsImported += 1;
                     state.currentDoc = doc;
                     state.activeRevision = 1;
                     bindDocToUi();
                     renderDocList();
+                    alert('Import complete: 1 document imported from markdown.');
                     return;
                 }
 
@@ -1031,15 +1062,19 @@ Date: {{date}}
                         const migrated = migrateDoc(pkg.doc || {});
                         if (migrated && migrated.id) {
                             await dbPut(DOC_STORE, migrated);
+                            importSummary.docsImported += 1;
                             if (!firstDoc) {
                                 firstDoc = migrated;
                             }
+                        } else {
+                            importSummary.errors.push(`Package ${i + 1}: missing valid doc payload`);
                         }
                         const pkgClients = Array.isArray(pkg.clients) ? pkg.clients : [];
                         for (let j = 0; j < pkgClients.length; j += 1) {
                             const client = pkgClients[j];
                             if (client && client.id) {
                                 await dbPut(CLIENT_STORE, client);
+                                importSummary.clientsImported += 1;
                             }
                         }
                     }
@@ -1050,19 +1085,25 @@ Date: {{date}}
                         bindDocToUi();
                         renderDocList();
                     } else {
-                        alert('No valid document packages found in JSON.');
+                        importSummary.errors.push('No valid document packages found in JSON.');
                     }
+                    alert(
+                        `Import complete: ${importSummary.docsImported} docs, ${importSummary.clientsImported} clients.` +
+                        (importSummary.errors.length ? ` Issues: ${importSummary.errors.join('; ')}` : '')
+                    );
                     return;
                 }
 
                 const incomingDoc = migrateDoc(parsed.doc || parsed);
                 await dbPut(DOC_STORE, incomingDoc);
+                importSummary.docsImported += 1;
 
                 if (Array.isArray(parsed.clients)) {
                     for (let i = 0; i < parsed.clients.length; i += 1) {
                         const client = parsed.clients[i];
                         if (client && client.id) {
                             await dbPut(CLIENT_STORE, client);
+                            importSummary.clientsImported += 1;
                         }
                     }
                 }
@@ -1072,6 +1113,10 @@ Date: {{date}}
                 state.activeRevision = incomingDoc.currentRevision;
                 bindDocToUi();
                 renderDocList();
+                alert(
+                    `Import complete: ${importSummary.docsImported} docs, ${importSummary.clientsImported} clients.` +
+                    (importSummary.errors.length ? ` Issues: ${importSummary.errors.join('; ')}` : '')
+                );
             } catch (err) {
                 console.error(err);
                 alert('Import failed. Check file format.');
@@ -1174,6 +1219,14 @@ ${el.preview.innerHTML}
         }
 
         const revision = getActiveRevision();
+        if (revision && revision.status !== 'signed') {
+            const continueUnsigned = window.confirm(
+                'This revision is unsigned. Publish anyway as unsigned read-only draft?'
+            );
+            if (!continueUnsigned) {
+                return;
+            }
+        }
         const response = await fetch(baseUrl.replace(/\/$/, '') + '/v1/publish', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1185,6 +1238,7 @@ ${el.preview.innerHTML}
                 signed_only: revision ? revision.status === 'signed' : false,
                 signed: revision ? revision.status === 'signed' : false,
                 jurisdiction: state.currentDoc ? state.currentDoc.clausePack : 'US_BASE',
+                strict_sanitize: true,
             }),
         });
 

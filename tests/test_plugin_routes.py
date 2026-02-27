@@ -30,6 +30,35 @@ def test_publish_requires_signed_when_signed_only(client):
     assert "signed_only" in response.get_json()["error"]
 
 
+def test_publish_rejects_invalid_jurisdiction(client):
+    test_client, _ = client
+    response = test_client.post(
+        "/plugin/v1/publish",
+        json={
+            "title": "Invalid Jurisdiction",
+            "html": "<h1>Hello</h1>",
+            "jurisdiction": "US_TX",
+        },
+    )
+    assert response.status_code == 400
+    assert "jurisdiction" in response.get_json()["error"]
+
+
+def test_publish_parses_boolean_strings(client):
+    test_client, _ = client
+    response = test_client.post(
+        "/plugin/v1/publish",
+        json={
+            "title": "Bool Parse",
+            "html": "<h1>Hello</h1>",
+            "signed_only": "true",
+            "signed": "false",
+        },
+    )
+    assert response.status_code == 400
+    assert "signed_only" in response.get_json()["error"]
+
+
 def test_publish_persists_metadata(client):
     test_client, app = client
     response = test_client.post(
@@ -48,6 +77,7 @@ def test_publish_persists_metadata(client):
     assert payload["signed"] is True
     assert payload["revision"] == 4
     assert payload["jurisdiction"] == "US_NY"
+    assert payload["sanitized"] is True
 
     publish_id = payload["publish_id"]
 
@@ -88,4 +118,7 @@ def test_expired_link_and_cleanup(client):
 
     cleanup = test_client.post("/plugin/v1/cleanup")
     assert cleanup.status_code == 200
-    assert cleanup.get_json()["cleaned"] >= 1
+    data = cleanup.get_json()
+    assert data["cleaned"] >= 1
+    assert data["scanned"] >= 1
+    assert data["timestamp"]

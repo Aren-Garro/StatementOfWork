@@ -33,3 +33,8 @@ output/
 
 # Fly.io
 .fly/
+
+# Local test/cache temp folders
+.tmp/
+.tmp_pytest/
+pytest-cache-files-*/

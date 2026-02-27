@@ -27,6 +27,7 @@ _RATE_WINDOW_SECONDS = 60
 _RATE_LIMIT_PER_WINDOW = 20
 _CAPTCHA_THRESHOLD_PER_WINDOW = 10
 _rate_events = defaultdict(deque)
+_ALLOWED_JURISDICTIONS = {'US_BASE', 'US_NY', 'US_CA'}
 
 
 def _utc_now() -> datetime:
@@ -96,6 +97,22 @@ def _parse_int(value, default):
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _parse_bool(value, default=False):
+    """Parse booleans from JSON values, including common string forms."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {'1', 'true', 'yes', 'y', 'on'}:
+        return True
+    if text in {'0', 'false', 'no', 'n', 'off'}:
+        return False
+    return default
 
 
 # Page Routes
@@ -244,17 +261,23 @@ def publish_document():
 
     data = request.get_json() or {}
     title = (data.get('title') or 'Statement of Work').strip()[:200]
-    html = _sanitize_html((data.get('html') or '').strip())
+    raw_html = (data.get('html') or '').strip()
+    strict_sanitize = _parse_bool(data.get('strict_sanitize'), True)
+    html = _sanitize_html(raw_html) if strict_sanitize else raw_html
     expires_in_days = _parse_int(data.get('expires_in_days', 30), 30)
     revision = _parse_int(data.get('revision'), None)
-    signed = bool(data.get('signed'))
-    signed_only = bool(data.get('signed_only'))
+    signed = _parse_bool(data.get('signed'), False)
+    signed_only = _parse_bool(data.get('signed_only'), False)
     jurisdiction = (data.get('jurisdiction') or 'US_BASE').strip()[:32] or 'US_BASE'
 
     if not html:
         return jsonify({'error': 'html is required'}), 400
     if signed_only and not signed:
         return jsonify({'error': 'signed_only publish requires signed=true'}), 400
+    if revision is not None and revision < 1:
+        return jsonify({'error': 'revision must be >= 1 when provided'}), 400
+    if jurisdiction not in _ALLOWED_JURISDICTIONS:
+        return jsonify({'error': 'invalid jurisdiction'}), 400
 
     expires_in_days = max(1, min(365, expires_in_days))
     doc_id = secrets.token_urlsafe(8)
@@ -278,6 +301,7 @@ def publish_document():
             'revision': revision,
             'signed': signed,
             'jurisdiction': jurisdiction,
+            'sanitized': strict_sanitize,
         }
     ), 201
 
@@ -330,6 +354,9 @@ def plugin_cleanup():
     """Soft-delete all expired published docs."""
     db = get_db()
     now = _utc_now().isoformat()
+    scanned = db.execute(
+        'SELECT COUNT(*) FROM published_docs WHERE deleted = 0'
+    ).fetchone()[0]
     cursor = db.execute(
         '''UPDATE published_docs
            SET deleted = 1
@@ -337,4 +364,11 @@ def plugin_cleanup():
         (now,),
     )
     db.commit()
-    return jsonify({'status': 'ok', 'cleaned': cursor.rowcount})
+    return jsonify(
+        {
+            'status': 'ok',
+            'cleaned': cursor.rowcount,
+            'scanned': scanned,
+            'timestamp': now,
+        }
+    )

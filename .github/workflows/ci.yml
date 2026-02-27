@@ -32,7 +32,7 @@ jobs:
         run: python -m flake8 .
 
       - name: Run tests
-        run: pytest -q
+        run: pytest -q --cache-clear --basetemp=/tmp/pytest-basetemp
 
       - name: Node syntax check
         run: node --check static/js/editor.js
