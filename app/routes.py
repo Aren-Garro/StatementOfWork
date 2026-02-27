@@ -56,11 +56,39 @@ def _needs_captcha(client_ip: str) -> bool:
 
 
 def _sanitize_html(content: str) -> str:
-    """Apply minimal sanitization for published content."""
-    no_script = re.sub(r'<\s*script[^>]*>.*?<\s*/\s*script\s*>', '', content, flags=re.IGNORECASE | re.DOTALL)
-    no_events = re.sub(r'\son\w+\s*=\s*"[^"]*"', '', no_script, flags=re.IGNORECASE)
-    no_js_urls = re.sub(r'javascript:', '', no_events, flags=re.IGNORECASE)
-    return no_js_urls
+    """Apply defensive sanitization for published content."""
+    sanitized = content
+    # Strip high-risk tags and their contents.
+    for tag in ('script', 'style', 'iframe', 'object', 'embed', 'svg', 'math'):
+        sanitized = re.sub(
+            rf'<\s*{tag}[^>]*>.*?<\s*/\s*{tag}\s*>',
+            '',
+            sanitized,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+    # Strip self-closing high-risk tags.
+    sanitized = re.sub(
+        r'<\s*(meta|base|link)\b[^>]*>',
+        '',
+        sanitized,
+        flags=re.IGNORECASE,
+    )
+    # Strip inline event handlers: on*="...", on*='...', on*=unquoted
+    sanitized = re.sub(
+        r'\son\w+\s*=\s*(".*?"|\'.*?\'|[^\s>]+)',
+        '',
+        sanitized,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    # Strip javascript: pseudo-protocols and srcdoc attributes.
+    sanitized = re.sub(r'javascript\s*:', '', sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(
+        r'\ssrcdoc\s*=\s*(".*?"|\'.*?\'|[^\s>]+)',
+        '',
+        sanitized,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    return sanitized
 
 
 def _parse_int(value, default):

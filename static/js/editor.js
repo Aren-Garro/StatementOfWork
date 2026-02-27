@@ -1023,6 +1023,38 @@ Date: {{date}}
                 }
 
                 const parsed = JSON.parse(text);
+
+                if (Array.isArray(parsed.packages)) {
+                    let firstDoc = null;
+                    for (let i = 0; i < parsed.packages.length; i += 1) {
+                        const pkg = parsed.packages[i] || {};
+                        const migrated = migrateDoc(pkg.doc || {});
+                        if (migrated && migrated.id) {
+                            await dbPut(DOC_STORE, migrated);
+                            if (!firstDoc) {
+                                firstDoc = migrated;
+                            }
+                        }
+                        const pkgClients = Array.isArray(pkg.clients) ? pkg.clients : [];
+                        for (let j = 0; j < pkgClients.length; j += 1) {
+                            const client = pkgClients[j];
+                            if (client && client.id) {
+                                await dbPut(CLIENT_STORE, client);
+                            }
+                        }
+                    }
+                    if (firstDoc) {
+                        state.clients = await dbGetAll(CLIENT_STORE);
+                        state.currentDoc = firstDoc;
+                        state.activeRevision = firstDoc.currentRevision;
+                        bindDocToUi();
+                        renderDocList();
+                    } else {
+                        alert('No valid document packages found in JSON.');
+                    }
+                    return;
+                }
+
                 const incomingDoc = migrateDoc(parsed.doc || parsed);
                 await dbPut(DOC_STORE, incomingDoc);
 

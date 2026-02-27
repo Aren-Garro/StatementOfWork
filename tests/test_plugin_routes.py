@@ -36,7 +36,7 @@ def test_publish_persists_metadata(client):
         "/plugin/v1/publish",
         json={
             "title": "Signed SOW",
-            "html": "<h1>X</h1><script>alert(1)</script>",
+            "html": "<h1 onclick='x()'>X</h1><a href=\"javascript:alert(1)\">Go</a><script>alert(1)</script>",
             "signed_only": True,
             "signed": True,
             "revision": 4,
@@ -62,6 +62,8 @@ def test_publish_persists_metadata(client):
         db = models.get_db()
         row = db.execute("SELECT html FROM published_docs WHERE id = ?", (publish_id,)).fetchone()
         assert "<script" not in row["html"].lower()
+        assert "onclick" not in row["html"].lower()
+        assert "javascript:" not in row["html"].lower()
 
 
 def test_expired_link_and_cleanup(client):
