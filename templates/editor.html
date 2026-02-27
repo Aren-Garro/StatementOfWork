@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOW Generator — Free Proposal & Statement of Work Builder</title>
+    <meta name="description" content="Free open-source tool to create professional proposals and statements of work from Markdown. Export to PDF instantly.">
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-left">
+            <h1 class="logo">SOW<span class="logo-accent">Gen</span></h1>
+            <span class="tagline">Markdown → Professional Proposals</span>
+        </div>
+        <div class="header-right">
+            <select id="template-select" class="control-select">
+                <option value="modern">Modern Template</option>
+                <option value="classic">Classic Template</option>
+                <option value="minimal">Minimal Template</option>
+            </select>
+            <button id="btn-export" class="btn btn-primary">
+                📄 Export PDF
+            </button>
+            <button id="btn-save" class="btn btn-secondary">
+                💾 Save Template
+            </button>
+        </div>
+    </header>
+
+    <main class="editor-layout">
+        <!-- Variables Panel -->
+        <aside class="variables-panel" id="variables-panel">
+            <h3>Variables</h3>
+            <div class="var-group">
+                <label for="var-client">Client Name</label>
+                <input type="text" id="var-client" data-var="client_name" placeholder="Acme Corp">
+            </div>
+            <div class="var-group">
+                <label for="var-project">Project Name</label>
+                <input type="text" id="var-project" data-var="project_name" placeholder="Website Redesign">
+            </div>
+            <div class="var-group">
+                <label for="var-consultant">Consultant Name</label>
+                <input type="text" id="var-consultant" data-var="consultant_name" placeholder="Your Name">
+            </div>
+            <div class="var-group">
+                <label for="var-date">Date</label>
+                <input type="date" id="var-date" data-var="date">
+            </div>
+            <hr>
+            <h3>Insert Blocks</h3>
+            <button class="btn btn-sm" onclick="insertSnippet('pricing')">+ Pricing Table</button>
+            <button class="btn btn-sm" onclick="insertSnippet('timeline')">+ Timeline</button>
+            <button class="btn btn-sm" onclick="insertSnippet('signature')">+ Signature Block</button>
+        </aside>
+
+        <!-- Markdown Editor -->
+        <section class="editor-pane">
+            <div class="pane-header">
+                <span>Markdown Editor</span>
+                <span class="char-count" id="char-count">0 chars</span>
+            </div>
+            <textarea id="markdown-editor" spellcheck="false" placeholder="Start writing your proposal in Markdown..."></textarea>
+        </section>
+
+        <!-- Live Preview -->
+        <section class="preview-pane">
+            <div class="pane-header">
+                <span>Live Preview</span>
+                <select id="page-size" class="control-select-sm">
+                    <option value="Letter">Letter</option>
+                    <option value="A4">A4</option>
+                </select>
+            </div>
+            <div id="preview-content" class="preview-content">
+                <p class="preview-placeholder">Start typing to see your proposal...</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/js/editor.js"></script>
+</body>
+</html>

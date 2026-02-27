@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page {
+            margin: 2cm;
+            @top-right {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 9pt;
+                color: #6b7280;
+            }
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            color: #1f2937;
+            line-height: 1.6;
+            font-size: 11pt;
+        }
+
+        .doc-header {
+            border-bottom: 3px solid {{ brand_color | default('#2563eb') }};
+            padding-bottom: 1.5em;
+            margin-bottom: 2em;
+        }
+
+        .doc-header h1 {
+            color: {{ brand_color | default('#2563eb') }};
+            font-size: 24pt;
+            margin: 0 0 0.3em 0;
+        }
+
+        {% if logo_url %}
+        .doc-logo {
+            max-height: 50px;
+            margin-bottom: 1em;
+        }
+        {% endif %}
+
+        h1 { font-size: 20pt; color: {{ brand_color | default('#2563eb') }}; margin-top: 1.5em; }
+        h2 { font-size: 15pt; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em; }
+        h3 { font-size: 12pt; color: #4b5563; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1em 0;
+        }
+
+        th {
+            background-color: {{ brand_color | default('#2563eb') }};
+            color: white;
+            padding: 0.6em 1em;
+            text-align: left;
+            font-size: 10pt;
+        }
+
+        td {
+            padding: 0.5em 1em;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 10pt;
+        }
+
+        tr:nth-child(even) td {
+            background-color: #f9fafb;
+        }
+
+        .sow-pricing {
+            margin: 1.5em 0;
+            page-break-inside: avoid;
+        }
+
+        .sow-timeline {
+            margin: 1.5em 0;
+            padding: 1em;
+            background-color: #f0f9ff;
+            border-left: 4px solid {{ brand_color | default('#2563eb') }};
+            border-radius: 0 8px 8px 0;
+        }
+
+        .sow-timeline h3 {
+            color: {{ brand_color | default('#2563eb') }};
+            margin-top: 0;
+        }
+
+        .sow-signatures {
+            margin-top: 3em;
+            page-break-inside: avoid;
+        }
+
+        .sig-block {
+            display: inline-block;
+            width: 45%;
+            margin-right: 5%;
+            vertical-align: top;
+        }
+
+        .sig-field {
+            margin-bottom: 1.5em;
+        }
+
+        .sig-label {
+            font-weight: 600;
+            font-size: 10pt;
+            color: #6b7280;
+        }
+
+        .sig-value {
+            font-size: 10pt;
+        }
+
+        .sig-line {
+            border-bottom: 1px solid #1f2937;
+            margin-top: 2em;
+            width: 100%;
+        }
+
+        ul, ol { margin: 0.5em 0; padding-left: 1.5em; }
+        li { margin-bottom: 0.3em; }
+        p { margin: 0.5em 0; }
+        code { background: #f3f4f6; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    {% if logo_url %}
+    <img src="{{ logo_url }}" class="doc-logo" alt="Logo">
+    {% endif %}
+
+    {{ content | safe }}
+</body>
+</html>
