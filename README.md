@@ -86,6 +86,7 @@ The output contains `packages[]`; import each package in-app via the Import butt
 `pytest.ini` is configured to run only `tests/`:
 
 - `--cache-clear`
+- local cache dir: `.pytest_cache_local`
 
 CI runs pytest with `--basetemp=/tmp/pytest-basetemp` to avoid permission issues in locked workspace folders.
 
