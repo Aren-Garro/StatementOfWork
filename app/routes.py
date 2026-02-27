@@ -16,7 +16,6 @@ from flask import (
 
 from app.markdown_parser import render_markdown
 from app.models import get_db
-from app.pdf_engine import generate_pdf
 from app.template_manager import TemplateManager
 
 main_bp = Blueprint('main', __name__)
@@ -120,6 +119,13 @@ def _get_client_ip() -> str:
     return (request.remote_addr or 'unknown').strip()
 
 
+def _read_json_object():
+    data = request.get_json(silent=True)
+    if isinstance(data, dict):
+        return data
+    return None
+
+
 # Page Routes
 @main_bp.route('/')
 def index():
@@ -162,7 +168,7 @@ def published_doc(publish_id):
 @api_bp.route('/preview', methods=['POST'])
 def preview():
     """Render markdown to HTML for live preview."""
-    data = request.get_json() or {}
+    data = _read_json_object() or {}
     markdown_text = data.get('markdown', '')
     variables = data.get('variables', {})
     template_name = data.get('template', 'modern')
@@ -174,7 +180,12 @@ def preview():
 @api_bp.route('/export', methods=['POST'])
 def export_pdf():
     """Generate and download PDF from markdown."""
-    data = request.get_json() or {}
+    try:
+        from app.pdf_engine import generate_pdf
+    except ModuleNotFoundError:
+        return jsonify({'error': 'PDF export dependency not installed'}), 503
+
+    data = _read_json_object() or {}
     markdown_text = data.get('markdown', '')
     variables = data.get('variables', {})
     template_name = data.get('template', 'modern')
@@ -207,13 +218,27 @@ def list_templates():
 @api_bp.route('/templates', methods=['POST'])
 def save_template():
     """Save a new template."""
-    data = request.get_json() or {}
+    data = _read_json_object()
+    if data is None:
+        return jsonify({'error': 'JSON object body is required'}), 400
+
+    name = (data.get('name') or '').strip()
+    markdown = data.get('markdown')
+    variables = data.get('variables', {})
+
+    if not name:
+        return jsonify({'error': 'name is required'}), 400
+    if not isinstance(markdown, str) or not markdown.strip():
+        return jsonify({'error': 'markdown is required'}), 400
+    if not isinstance(variables, dict):
+        return jsonify({'error': 'variables must be an object'}), 400
+
     tm = TemplateManager()
     template = tm.save_template(
-        name=data['name'],
+        name=name,
         description=data.get('description', ''),
-        markdown=data['markdown'],
-        variables=data.get('variables', {}),
+        markdown=markdown,
+        variables=variables,
     )
     return jsonify({'template': template}), 201
 
@@ -231,7 +256,21 @@ def get_template(template_id):
 @api_bp.route('/templates/<int:template_id>', methods=['PUT'])
 def update_template(template_id):
     """Update an existing template."""
-    data = request.get_json() or {}
+    data = _read_json_object()
+    if data is None:
+        return jsonify({'error': 'JSON object body is required'}), 400
+
+    if 'name' in data and not isinstance(data.get('name'), str):
+        return jsonify({'error': 'name must be a string'}), 400
+    if 'name' in data and not data.get('name', '').strip():
+        return jsonify({'error': 'name cannot be empty'}), 400
+    if 'description' in data and not isinstance(data.get('description'), str):
+        return jsonify({'error': 'description must be a string'}), 400
+    if 'markdown' in data and not isinstance(data.get('markdown'), str):
+        return jsonify({'error': 'markdown must be a string'}), 400
+    if 'variables' in data and not isinstance(data.get('variables'), dict):
+        return jsonify({'error': 'variables must be an object'}), 400
+
     tm = TemplateManager()
     template = tm.update_template(template_id, data)
     if not template:
