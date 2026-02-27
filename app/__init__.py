@@ -17,9 +17,10 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
-    from app.routes import main_bp, api_bp
+    from app.routes import main_bp, api_bp, plugin_bp
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(plugin_bp, url_prefix='/plugin')
 
     from app.models import init_db
     with app.app_context():

@@ -3,79 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOW Generator — Free Proposal & Statement of Work Builder</title>
-    <meta name="description" content="Free open-source tool to create professional proposals and statements of work from Markdown. Export to PDF instantly.">
+    <title>SOW Creator - Local First</title>
+    <meta name="description" content="Local-first Statement of Work creator with instant PDF export.">
     <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body>
     <header class="app-header">
-        <div class="header-left">
-            <h1 class="logo">SOW<span class="logo-accent">Gen</span></h1>
-            <span class="tagline">Markdown → Professional Proposals</span>
+        <div class="brand">
+            <h1>SOW Creator</h1>
+            <p>Local-first editor with instant PDF export</p>
         </div>
-        <div class="header-right">
-            <select id="template-select" class="control-select">
-                <option value="modern">Modern Template</option>
-                <option value="classic">Classic Template</option>
-                <option value="minimal">Minimal Template</option>
+        <div class="controls">
+            <select id="template-select" class="control-select" aria-label="Template">
+                <option value="modern">Modern</option>
+                <option value="classic">Classic</option>
+                <option value="minimal">Minimal</option>
             </select>
-            <button id="btn-export" class="btn btn-primary">
-                📄 Export PDF
-            </button>
-            <button id="btn-save" class="btn btn-secondary">
-                💾 Save Template
-            </button>
+            <select id="page-size" class="control-select" aria-label="Page Size">
+                <option value="Letter">Letter</option>
+                <option value="A4">A4</option>
+                <option value="Legal">Legal</option>
+            </select>
+            <button id="btn-new" class="btn btn-secondary">New</button>
+            <button id="btn-save" class="btn btn-secondary">Save</button>
+            <button id="btn-export" class="btn btn-primary">Print / PDF</button>
+            <button id="btn-settings" class="btn btn-secondary">Sharing</button>
+            <button id="btn-publish" class="btn btn-secondary" title="Optional sharing plugin">Publish</button>
         </div>
     </header>
 
     <main class="editor-layout">
-        <!-- Variables Panel -->
-        <aside class="variables-panel" id="variables-panel">
-            <h3>Variables</h3>
-            <div class="var-group">
-                <label for="var-client">Client Name</label>
-                <input type="text" id="var-client" data-var="client_name" placeholder="Acme Corp">
-            </div>
-            <div class="var-group">
-                <label for="var-project">Project Name</label>
-                <input type="text" id="var-project" data-var="project_name" placeholder="Website Redesign">
-            </div>
-            <div class="var-group">
-                <label for="var-consultant">Consultant Name</label>
-                <input type="text" id="var-consultant" data-var="consultant_name" placeholder="Your Name">
-            </div>
-            <div class="var-group">
-                <label for="var-date">Date</label>
-                <input type="date" id="var-date" data-var="date">
-            </div>
-            <hr>
-            <h3>Insert Blocks</h3>
-            <button class="btn btn-sm" onclick="insertSnippet('pricing')">+ Pricing Table</button>
-            <button class="btn btn-sm" onclick="insertSnippet('timeline')">+ Timeline</button>
-            <button class="btn btn-sm" onclick="insertSnippet('signature')">+ Signature Block</button>
+        <aside class="sidebar">
+            <section>
+                <h2>Document</h2>
+                <p id="doc-name" class="doc-name"></p>
+                <p id="save-status" class="muted">Ready</p>
+            </section>
+
+            <section>
+                <h2>Variables</h2>
+                <label>Client Name<input type="text" data-var="client_name"></label>
+                <label>Project Name<input type="text" data-var="project_name"></label>
+                <label>Consultant Name<input type="text" data-var="consultant_name"></label>
+                <label>Date<input type="date" data-var="date"></label>
+            </section>
+
+            <section>
+                <h2>Snippets</h2>
+                <button class="btn btn-small" data-snippet="pricing">Pricing</button>
+                <button class="btn btn-small" data-snippet="timeline">Timeline</button>
+                <button class="btn btn-small" data-snippet="signature">Signature</button>
+            </section>
+
+            <section>
+                <h2>Local Docs</h2>
+                <ul id="doc-list" class="doc-list"></ul>
+            </section>
         </aside>
 
-        <!-- Markdown Editor -->
-        <section class="editor-pane">
-            <div class="pane-header">
-                <span>Markdown Editor</span>
-                <span class="char-count" id="char-count">0 chars</span>
-            </div>
-            <textarea id="markdown-editor" spellcheck="false" placeholder="Start writing your proposal in Markdown..."></textarea>
+        <section class="pane">
+            <header class="pane-header">
+                <span>Markdown</span>
+                <span id="char-count" class="muted">0 chars</span>
+            </header>
+            <textarea id="markdown-editor" spellcheck="false"></textarea>
         </section>
 
-        <!-- Live Preview -->
-        <section class="preview-pane">
-            <div class="pane-header">
-                <span>Live Preview</span>
-                <select id="page-size" class="control-select-sm">
-                    <option value="Letter">Letter</option>
-                    <option value="A4">A4</option>
-                </select>
-            </div>
-            <div id="preview-content" class="preview-content">
-                <p class="preview-placeholder">Start typing to see your proposal...</p>
-            </div>
+        <section class="pane preview-pane">
+            <header class="pane-header">
+                <span>Preview</span>
+            </header>
+            <article id="preview-content" class="preview theme-modern"></article>
         </section>
     </main>
 
