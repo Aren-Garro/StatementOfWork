@@ -1,5 +1,7 @@
 """Tests for optional sharing plugin endpoints."""
+import os
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import pytest
 
@@ -8,11 +10,13 @@ from app import create_app
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    db_path = tmp_path / "sow_test.db"
-    monkeypatch.setattr(models, "DATABASE_PATH", str(db_path))
+def client(monkeypatch):
+    db_path = models.DATABASE_PATH.replace("sow.db", f"sow_plugin_test_{uuid4().hex}.db")
+    monkeypatch.setattr(models, "DATABASE_PATH", db_path)
     app = create_app({"TESTING": True})
-    return app.test_client(), app
+    yield app.test_client(), app
+    if os.path.exists(db_path):
+        os.remove(db_path)
 
 
 def test_publish_requires_signed_when_signed_only(client):
