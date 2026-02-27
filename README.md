@@ -38,14 +38,18 @@ Open `http://localhost:5000`.
 Base path: `/plugin`
 
 - `POST /plugin/v1/publish`
-  - Body: `{ "title": "...", "html": "...", "expires_in_days": 30 }`
-  - Returns: `publish_id`, `view_url`, `expires_at`
+  - Body: `{ "title": "...", "html": "...", "expires_in_days": 30, "revision": 2, "signed": true, "signed_only": true, "jurisdiction": "US_NY" }`
+  - Returns: `publish_id`, `view_url`, `expires_at`, `revision`, `signed`, `jurisdiction`
 - `GET /plugin/v1/p/<publish_id>`
   - Returns publish metadata.
 - `DELETE /plugin/v1/p/<publish_id>`
   - Soft-deletes a publish.
 - `GET /plugin/v1/health`
   - Health check.
+- `POST /plugin/v1/health/check`
+  - Connectivity check for client configuration.
+- `POST /plugin/v1/cleanup`
+  - Marks expired published documents as deleted.
 - Public read-only page: `GET /p/<publish_id>`
 
 ## Abuse controls

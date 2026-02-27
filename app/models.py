@@ -53,9 +53,16 @@ def init_db(app):
             created_at TEXT NOT NULL,
             expires_at TEXT NOT NULL,
             deleted INTEGER NOT NULL DEFAULT 0,
-            views INTEGER NOT NULL DEFAULT 0
+            views INTEGER NOT NULL DEFAULT 0,
+            revision INTEGER,
+            signed INTEGER NOT NULL DEFAULT 0,
+            jurisdiction TEXT NOT NULL DEFAULT 'US_BASE'
         )
     ''')
+
+    _ensure_column(db, 'published_docs', 'revision', 'INTEGER')
+    _ensure_column(db, 'published_docs', 'signed', 'INTEGER NOT NULL DEFAULT 0')
+    _ensure_column(db, 'published_docs', 'jurisdiction', "TEXT NOT NULL DEFAULT 'US_BASE'")
 
     # Seed sample templates if empty
     count = db.execute('SELECT COUNT(*) FROM templates').fetchone()[0]
@@ -63,6 +70,14 @@ def init_db(app):
         _seed_templates(db)
 
     db.commit()
+
+
+def _ensure_column(db, table: str, column: str, definition: str):
+    """Add a column if it doesn't already exist (SQLite-safe migration helper)."""
+    existing = db.execute(f"PRAGMA table_info({table})").fetchall()
+    existing_names = {row[1] for row in existing}
+    if column not in existing_names:
+        db.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
 
 
 def _seed_templates(db):

@@ -63,6 +63,13 @@ def _sanitize_html(content: str) -> str:
     return no_js_urls
 
 
+def _parse_int(value, default):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 # Page Routes
 @main_bp.route('/')
 def index():
@@ -210,10 +217,16 @@ def publish_document():
     data = request.get_json() or {}
     title = (data.get('title') or 'Statement of Work').strip()[:200]
     html = _sanitize_html((data.get('html') or '').strip())
-    expires_in_days = int(data.get('expires_in_days', 30))
+    expires_in_days = _parse_int(data.get('expires_in_days', 30), 30)
+    revision = _parse_int(data.get('revision'), None)
+    signed = bool(data.get('signed'))
+    signed_only = bool(data.get('signed_only'))
+    jurisdiction = (data.get('jurisdiction') or 'US_BASE').strip()[:32] or 'US_BASE'
 
     if not html:
         return jsonify({'error': 'html is required'}), 400
+    if signed_only and not signed:
+        return jsonify({'error': 'signed_only publish requires signed=true'}), 400
 
     expires_in_days = max(1, min(365, expires_in_days))
     doc_id = secrets.token_urlsafe(8)
@@ -222,9 +235,9 @@ def publish_document():
 
     db = get_db()
     db.execute(
-        '''INSERT INTO published_docs (id, title, html, created_at, expires_at)
-           VALUES (?, ?, ?, ?, ?)''',
-        (doc_id, title, html, now.isoformat(), expires_at.isoformat()),
+        '''INSERT INTO published_docs (id, title, html, created_at, expires_at, revision, signed, jurisdiction)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+        (doc_id, title, html, now.isoformat(), expires_at.isoformat(), revision, 1 if signed else 0, jurisdiction),
     )
     db.commit()
 
@@ -234,6 +247,9 @@ def publish_document():
             'publish_id': doc_id,
             'view_url': view_url,
             'expires_at': expires_at.isoformat(),
+            'revision': revision,
+            'signed': signed,
+            'jurisdiction': jurisdiction,
         }
     ), 201
 
@@ -244,7 +260,7 @@ def plugin_get_published(publish_id):
     publish_id = _normalize_doc_id(publish_id)
     db = get_db()
     row = db.execute(
-        '''SELECT id, title, created_at, expires_at, deleted, views
+        '''SELECT id, title, created_at, expires_at, deleted, views, revision, signed, jurisdiction
            FROM published_docs WHERE id = ?''',
         (publish_id,),
     ).fetchone()
@@ -273,3 +289,24 @@ def plugin_delete_published(publish_id):
 @plugin_bp.route('/v1/health', methods=['GET'])
 def plugin_health():
     return jsonify({'status': 'ok'})
+
+
+@plugin_bp.route('/v1/health/check', methods=['POST'])
+def plugin_health_check():
+    """Connectivity diagnostic endpoint for UI plugin settings checks."""
+    return jsonify({'status': 'ok', 'time': _utc_now().isoformat()})
+
+
+@plugin_bp.route('/v1/cleanup', methods=['POST'])
+def plugin_cleanup():
+    """Soft-delete all expired published docs."""
+    db = get_db()
+    now = _utc_now().isoformat()
+    cursor = db.execute(
+        '''UPDATE published_docs
+           SET deleted = 1
+           WHERE deleted = 0 AND expires_at < ?''',
+        (now,),
+    )
+    db.commit()
+    return jsonify({'status': 'ok', 'cleaned': cursor.rowcount})

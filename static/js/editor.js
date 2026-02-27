@@ -1151,6 +1151,8 @@ ${el.preview.innerHTML}
                 expires_in_days: 30,
                 revision: revision ? revision.revision : null,
                 signed_only: revision ? revision.status === 'signed' : false,
+                signed: revision ? revision.status === 'signed' : false,
+                jurisdiction: state.currentDoc ? state.currentDoc.clausePack : 'US_BASE',
             }),
         });
 
@@ -1171,8 +1173,22 @@ ${el.preview.innerHTML}
             return;
         }
 
-        localStorage.setItem('sharing_plugin_url', value.trim());
+        const normalized = value.trim();
+        localStorage.setItem('sharing_plugin_url', normalized);
         syncSharingState();
+
+        if (normalized) {
+            fetch(normalized.replace(/\/$/, '') + '/v1/health/check', { method: 'POST' })
+                .then((res) => {
+                    if (!res.ok) {
+                        throw new Error('health check failed');
+                    }
+                    setSaveStatus('Sharing plugin configured');
+                })
+                .catch(() => {
+                    setSaveStatus('Sharing plugin configured (health check failed)');
+                });
+        }
     }
 
     function syncSharingState() {
