@@ -69,6 +69,9 @@ test("compare view renders and signature capture can be accepted", async ({ page
   await page.getByRole("button", { name: "Compare" }).click();
   await expect(page.locator("#compare-output")).toContainText("Revision 1 vs Revision 2");
 
+  await page.locator("#revision-list button").first().click();
+  await expect(page.locator("#compare-output")).toContainText("Revision 1 vs Revision 2");
+
   await page.getByRole("button", { name: "Sign as Consultant" }).click();
   await page.fill("#signature-name", "Playwright Consultant");
   await drawSignature(page);

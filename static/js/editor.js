@@ -117,6 +117,7 @@ Date: {{date}}
     const state = {
         db: null,
         currentDoc: null,
+        lastDocId: null,
         activeRevision: null,
         clients: [],
         saveTimer: null,
@@ -1110,6 +1111,9 @@ Date: {{date}}
         if (!revision) {
             return;
         }
+        const previousDocId = state.lastDocId;
+        const currentDocId = state.currentDoc ? state.currentDoc.id : null;
+        const docChanged = Boolean(previousDocId && currentDocId && previousDocId !== currentDocId);
 
         el.editor.value = revision.markdown;
         el.templateSelect.value = revision.templateId || 'modern';
@@ -1127,7 +1131,10 @@ Date: {{date}}
         renderPreview();
         renderRevisionList();
         renderClientSelect();
-        clearComparison();
+        if (docChanged) {
+            clearComparison();
+        }
+        state.lastDocId = currentDocId;
     }
 
     function normalizeClausePackBlock(markdown, clausePackKey) {

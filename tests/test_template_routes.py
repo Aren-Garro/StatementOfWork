@@ -121,3 +121,20 @@ def test_template_library_query_matches_user_template(monkeypatch):
     assert payload["total"] >= 1
     assert any(item["source"] == "user" and "Acme Special SOW" in item["name"] for item in payload["templates"])
     assert all("templateId" in item for item in payload["templates"])
+
+
+def test_template_library_offset_pagination_returns_next_page(monkeypatch):
+    client = _make_client(monkeypatch)
+    first_page = client.get("/api/templates/library?limit=1&offset=0")
+    second_page = client.get("/api/templates/library?limit=1&offset=1")
+    assert first_page.status_code == 200
+    assert second_page.status_code == 200
+
+    p1 = first_page.get_json()
+    p2 = second_page.get_json()
+    assert p1["limit"] == 1 and p2["limit"] == 1
+    assert p1["offset"] == 0 and p2["offset"] == 1
+    assert p1["total"] >= 2
+    assert len(p1["templates"]) == 1
+    assert len(p2["templates"]) == 1
+    assert p1["templates"][0]["id"] != p2["templates"][0]["id"]
