@@ -176,6 +176,15 @@ def _enforce_publish_captcha(client_ip: str):
     return None
 
 
+def _plugin_guard(client_ip: str, event_prefix: str, *, require_captcha: bool = False):
+    limited = _enforce_rate_limit(client_ip, event_prefix)
+    if limited:
+        return limited
+    if require_captcha:
+        return _enforce_publish_captcha(client_ip)
+    return None
+
+
 def _normalized_text(value, default: str = '', max_len: int | None = None) -> str:
     text = (value or default).strip()
     if max_len is not None:
@@ -257,6 +266,25 @@ def _publish_response_payload(published: dict, *, host_url: str) -> dict:
         'page_size': published['page_size'],
         'sanitized': True,
     }
+
+
+def _create_published_or_error(payload: dict):
+    db = get_db()
+    return create_published_document(
+        db=db,
+        title=payload['title'],
+        sanitized_html=payload['sanitized_html'],
+        expires_in_days=payload['expires_in_days'],
+        revision=payload['revision'],
+        signed=payload['signed'],
+        signed_only=payload['signed_only'],
+        jurisdiction=payload['jurisdiction'],
+        template=payload['template'],
+        page_size=payload['page_size'],
+        allowed_jurisdictions=_ALLOWED_JURISDICTIONS,
+        allowed_templates=_ALLOWED_TEMPLATES,
+        allowed_page_sizes=_ALLOWED_PAGE_SIZES,
+    )
 
 
 def _validate_template_create_payload(data: dict) -> str | None:
@@ -464,33 +492,15 @@ def delete_template(template_id):
 def publish_document():
     """Publish a read-only document with expiry."""
     client_ip = _get_client_ip()
-    limited = _enforce_rate_limit(client_ip, 'plugin.publish')
-    if limited:
-        return limited
-    captcha_blocked = _enforce_publish_captcha(client_ip)
-    if captcha_blocked:
-        return captcha_blocked
+    blocked = _plugin_guard(client_ip, 'plugin.publish', require_captcha=True)
+    if blocked:
+        return blocked
 
     data = _read_json_object() or {}
     payload = _parse_publish_request(data)
 
-    db = get_db()
     try:
-        published = create_published_document(
-            db=db,
-            title=payload['title'],
-            sanitized_html=payload['sanitized_html'],
-            expires_in_days=payload['expires_in_days'],
-            revision=payload['revision'],
-            signed=payload['signed'],
-            signed_only=payload['signed_only'],
-            jurisdiction=payload['jurisdiction'],
-            template=payload['template'],
-            page_size=payload['page_size'],
-            allowed_jurisdictions=_ALLOWED_JURISDICTIONS,
-            allowed_templates=_ALLOWED_TEMPLATES,
-            allowed_page_sizes=_ALLOWED_PAGE_SIZES,
-        )
+        published = _create_published_or_error(payload)
     except ServiceError as exc:
         _log_event('info', 'plugin.publish.invalid', client_ip=client_ip, error=str(exc))
         return jsonify({'error': str(exc)}), exc.status_code
@@ -527,9 +537,9 @@ def plugin_get_published(publish_id):
 def plugin_email_published(publish_id):
     """Send published SOW by email via SMTP."""
     client_ip = _get_client_ip()
-    limited = _enforce_rate_limit(client_ip, 'plugin.email')
-    if limited:
-        return limited
+    blocked = _plugin_guard(client_ip, 'plugin.email')
+    if blocked:
+        return blocked
 
     publish_id = _normalize_doc_id(publish_id)
     data = _read_json_object()
