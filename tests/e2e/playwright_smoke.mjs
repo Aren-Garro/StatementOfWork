@@ -30,6 +30,7 @@ test("local-first signing and export controls render", async ({ page }) => {
   await expect(page.locator("#doc-name")).toContainText("Playwright Smoke SOW");
 
   await expect(page.locator("#guardrail-list")).toBeVisible();
+  await expect(page.locator(".sow-gantt")).toBeVisible();
 });
 
 test("new library, compare, and signature modal controls render", async ({ page }) => {
@@ -38,6 +39,11 @@ test("new library, compare, and signature modal controls render", async ({ page 
   await expect(page.locator("#library-search")).toBeVisible();
   await expect(page.locator("#library-industry")).toBeVisible();
   await expect(page.locator("#library-list")).toBeVisible();
+  await expect(page.locator("#custom-clause-select")).toBeVisible();
+  await expect(page.locator("#custom-clause-name")).toBeVisible();
+  await expect(page.locator("#custom-clause-body")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save Clause" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Insert Clause" })).toBeVisible();
 
   await expect(page.locator("#compare-base")).toBeVisible();
   await expect(page.locator("#compare-target")).toBeVisible();

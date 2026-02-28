@@ -3,10 +3,11 @@
     'use strict';
 
     const DB_NAME = 'sow_creator_db';
-    const DB_VERSION = 2;
+    const DB_VERSION = 3;
     const DOC_STORE = 'documents';
     const TEMPLATE_STORE = 'templates';
     const CLIENT_STORE = 'clients';
+    const CLAUSE_STORE = 'custom_clauses';
     const SAVE_DEBOUNCE_MS = 500;
 
     const CLAUSE_MARKER_START = '<!-- CLAUSE_PACK_START -->';
@@ -148,6 +149,7 @@ Date: {{date}}
         lastDocId: null,
         activeRevision: null,
         clients: [],
+        customClauses: [],
         saveTimer: null,
         libraryTemplates: [],
         compare: {
@@ -191,8 +193,14 @@ Date: {{date}}
         clientContactName: document.getElementById('client-contact-name'),
         clientEmail: document.getElementById('client-email'),
         clientState: document.getElementById('client-state'),
+        customClauseSelect: document.getElementById('custom-clause-select'),
+        customClauseName: document.getElementById('custom-clause-name'),
+        customClauseDescription: document.getElementById('custom-clause-description'),
+        customClauseBody: document.getElementById('custom-clause-body'),
         btnSaveClient: document.getElementById('btn-save-client'),
         btnApplyClausePack: document.getElementById('btn-apply-clause-pack'),
+        btnSaveCustomClause: document.getElementById('btn-save-custom-clause'),
+        btnInsertCustomClause: document.getElementById('btn-insert-custom-clause'),
         btnSave: document.getElementById('btn-save'),
         btnNew: document.getElementById('btn-new'),
         btnNewRevision: document.getElementById('btn-new-revision'),
@@ -341,6 +349,57 @@ Date: {{date}}
         };
     }
 
+    function buildTimelineGantt(timelineBody) {
+        const lines = (timelineBody || '').replace(/\r\n/g, '\n').split('\n');
+        const rows = [];
+
+        lines.forEach((line) => {
+            const trimmed = line.trim();
+            if (!/^[-*]\s+/.test(trimmed)) {
+                return;
+            }
+            const content = trimmed.replace(/^[-*]\s+/, '');
+            let match = content.match(/(?:week|wk)?\s*(\d+)\s*-\s*(\d+)\s*:\s*(.+)$/i);
+            if (match) {
+                rows.push({
+                    start: Number(match[1]),
+                    end: Number(match[2]),
+                    label: match[3].trim(),
+                });
+                return;
+            }
+            match = content.match(/(?:week|wk)?\s*(\d+)\s*:\s*(.+)$/i);
+            if (match) {
+                const point = Number(match[1]);
+                rows.push({
+                    start: point,
+                    end: point,
+                    label: match[2].trim(),
+                });
+            }
+        });
+
+        if (rows.length === 0) {
+            return '';
+        }
+
+        const minStart = rows.reduce((min, row) => Math.min(min, row.start), rows[0].start);
+        const maxEnd = rows.reduce((max, row) => Math.max(max, row.end), rows[0].end);
+        const span = Math.max(1, (maxEnd - minStart + 1));
+
+        let html = '<div class="sow-gantt"><h4>Gantt View</h4>';
+        rows.forEach((row) => {
+            const offset = ((row.start - minStart) / span) * 100;
+            const width = (((row.end - row.start + 1) / span) * 100);
+            html += '<div class="gantt-row">' +
+                '<div class="gantt-label">' + inline(row.label) + ' <span class="muted">(W' + row.start + '-W' + row.end + ')</span></div>' +
+                '<div class="gantt-track"><div class="gantt-bar" style="margin-left:' + offset.toFixed(2) + '%;width:' + width.toFixed(2) + '%;"></div></div>' +
+                '</div>';
+        });
+        html += '</div>';
+        return html;
+    }
+
     function parseMarkdown(md) {
         const lines = (md || '').replace(/\r\n/g, '\n').split('\n');
         let i = 0;
@@ -462,7 +521,7 @@ Date: {{date}}
             return '\n<div class="sow-pricing">' + parseMarkdown(body) + summaryHtml + '</div>\n';
         });
         out = out.replace(/:::timeline\s*\n([\s\S]*?)\n:::/g, function (_, body) {
-            return '\n<div class="sow-timeline"><h3>Project Timeline</h3>' + parseMarkdown(body) + '</div>\n';
+            return '\n<div class="sow-timeline"><h3>Project Timeline</h3>' + parseMarkdown(body) + buildTimelineGantt(body) + '</div>\n';
         });
         out = out.replace(/:::signature\s*\n([\s\S]*?)\n:::/g, function (_, body) {
             return '\n' + renderSignatureBlock(body) + '\n';
@@ -925,6 +984,9 @@ Date: {{date}}
                 if (!db.objectStoreNames.contains(CLIENT_STORE)) {
                     db.createObjectStore(CLIENT_STORE, { keyPath: 'id' });
                 }
+                if (!db.objectStoreNames.contains(CLAUSE_STORE)) {
+                    db.createObjectStore(CLAUSE_STORE, { keyPath: 'id' });
+                }
             };
             req.onsuccess = function () { resolve(req.result); };
             req.onerror = function () { reject(req.error); };
@@ -1208,6 +1270,102 @@ Date: {{date}}
         bindClientForm(currentId);
     }
 
+    function bindCustomClauseForm(clauseId) {
+        const clause = state.customClauses.find((c) => c.id === clauseId) || null;
+        if (!clause) {
+            el.customClauseName.value = '';
+            el.customClauseDescription.value = '';
+            el.customClauseBody.value = '';
+            return;
+        }
+        el.customClauseName.value = clause.name || '';
+        el.customClauseDescription.value = clause.description || '';
+        el.customClauseBody.value = clause.body || '';
+    }
+
+    function renderCustomClauseSelect() {
+        const currentId = el.customClauseSelect.value || '';
+        el.customClauseSelect.innerHTML = '<option value="">New custom clause</option>';
+        state.customClauses
+            .slice()
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+            .forEach((clause) => {
+                const option = document.createElement('option');
+                option.value = clause.id;
+                option.textContent = clause.name || 'Unnamed clause';
+                if (clause.id === currentId) {
+                    option.selected = true;
+                }
+                el.customClauseSelect.appendChild(option);
+            });
+        bindCustomClauseForm(el.customClauseSelect.value || '');
+    }
+
+    async function onCustomClauseSelected() {
+        bindCustomClauseForm(el.customClauseSelect.value || '');
+    }
+
+    async function saveCustomClause() {
+        const name = (el.customClauseName.value || '').trim();
+        const body = (el.customClauseBody.value || '').trim();
+        if (!name) {
+            alert('Clause name is required.');
+            return;
+        }
+        if (!body) {
+            alert('Clause body is required.');
+            return;
+        }
+
+        let clauseId = el.customClauseSelect.value || '';
+        let existing = clauseId ? await dbGet(CLAUSE_STORE, clauseId) : null;
+        if (!existing) {
+            clauseId = uid('clause');
+            existing = { id: clauseId, createdAt: nowIso() };
+        }
+
+        const clause = {
+            id: clauseId,
+            name: name,
+            description: (el.customClauseDescription.value || '').trim(),
+            body: body,
+            createdAt: existing.createdAt || nowIso(),
+            updatedAt: nowIso(),
+        };
+        await dbPut(CLAUSE_STORE, clause);
+        state.customClauses = await dbGetAll(CLAUSE_STORE);
+        el.customClauseSelect.value = clause.id;
+        renderCustomClauseSelect();
+        setSaveStatus('Saved custom clause locally');
+    }
+
+    function insertCustomClause() {
+        const revision = ensureEditableCurrent();
+        if (!revision) {
+            return;
+        }
+
+        const selectedId = el.customClauseSelect.value || '';
+        const clause = state.customClauses.find((c) => c.id === selectedId);
+        const title = clause ? clause.name : (el.customClauseName.value || '').trim();
+        const body = clause ? clause.body : (el.customClauseBody.value || '').trim();
+        if (!title || !body) {
+            alert('Select or draft a custom clause to insert.');
+            return;
+        }
+
+        const block = '\n## Custom Clause: ' + title + '\n\n' + body + '\n';
+        const start = el.editor.selectionStart;
+        const end = el.editor.selectionEnd;
+        el.editor.value = el.editor.value.slice(0, start) + block + el.editor.value.slice(end);
+        el.editor.selectionStart = el.editor.selectionEnd = start + block.length;
+        el.editor.focus();
+        setRevisionFromUi(revision);
+        updateCharCount();
+        renderPreview();
+        queueSave();
+    }
+
     function bindDocToUi() {
         const revision = getActiveRevision();
         if (!revision) {
@@ -1233,6 +1391,7 @@ Date: {{date}}
         renderPreview();
         renderRevisionList();
         renderClientSelect();
+        renderCustomClauseSelect();
         if (docChanged) {
             clearComparison();
         }
@@ -1945,6 +2104,13 @@ ${el.preview.innerHTML}
         el.btnSaveClient.addEventListener('click', function () {
             saveClient().catch(console.error);
         });
+        el.btnSaveCustomClause.addEventListener('click', function () {
+            saveCustomClause().catch(console.error);
+        });
+        el.btnInsertCustomClause.addEventListener('click', insertCustomClause);
+        el.customClauseSelect.addEventListener('change', function () {
+            onCustomClauseSelected().catch(console.error);
+        });
 
         el.clientSelect.addEventListener('change', function () {
             onClientSelected().catch(console.error);
@@ -1992,6 +2158,7 @@ ${el.preview.innerHTML}
     async function init() {
         state.db = await openDb();
         state.clients = await dbGetAll(CLIENT_STORE);
+        state.customClauses = await dbGetAll(CLAUSE_STORE);
         state.currentDoc = await ensureSeedDocument();
         state.activeRevision = state.currentDoc.currentRevision;
         bindDocToUi();

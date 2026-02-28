@@ -91,6 +91,12 @@ textarea {
     margin: 0.2rem 0;
 }
 
+.clause-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+}
+
 .editor-layout {
     display: grid;
     grid-template-columns: 280px minmax(320px, 1fr) minmax(320px, 1fr);
@@ -138,6 +144,16 @@ textarea {
 .sidebar select {
     margin-top: 0.2rem;
     width: 100%;
+}
+
+.sidebar textarea {
+    margin-top: 0.2rem;
+    width: 100%;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    resize: vertical;
+    min-height: 96px;
 }
 
 .sidebar input {
@@ -329,6 +345,40 @@ textarea {
     margin-top: 0.35rem;
     padding-top: 0.35rem;
     border-top: 1px solid #cbd5e1;
+}
+
+.preview .sow-gantt {
+    margin-top: 0.7rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed #94a3b8;
+}
+
+.preview .sow-gantt h4 {
+    margin: 0 0 0.45rem;
+    font-size: 0.85rem;
+}
+
+.preview .gantt-row {
+    margin-bottom: 0.45rem;
+}
+
+.preview .gantt-label {
+    font-size: 0.8rem;
+    margin-bottom: 0.2rem;
+}
+
+.preview .gantt-track {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+}
+
+.preview .gantt-bar {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #0ea5e9 0%, #0284c7 100%);
 }
 
 .preview .sig-block {

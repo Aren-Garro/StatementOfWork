@@ -240,8 +240,8 @@ Deploy on your own server or cloud platform:
 - [x] Enhanced template gallery with industry-specific examples
 - [ ] Multi-language support for international consultants
 - [x] Advanced pricing table calculations (discounts, taxes)
-- [ ] Gantt chart integration for timeline visualization
-- [ ] Custom clause library builder UI
+- [x] Gantt chart integration for timeline visualization
+- [x] Custom clause library builder UI
 - [ ] Email integration for direct client delivery
 - [x] Mobile-responsive signature capture
 

@@ -92,6 +92,20 @@
             </section>
 
             <section>
+                <h2>Custom Clause Library</h2>
+                <select id="custom-clause-select" class="control-select full-width">
+                    <option value="">New custom clause</option>
+                </select>
+                <label>Clause Name<input type="text" id="custom-clause-name" placeholder="Confidentiality Addendum"></label>
+                <label>Description<input type="text" id="custom-clause-description" placeholder="Optional notes"></label>
+                <label>Clause Body<textarea id="custom-clause-body" rows="4" placeholder="- Clause point 1&#10;- Clause point 2"></textarea></label>
+                <div class="clause-actions">
+                    <button id="btn-save-custom-clause" class="btn btn-small">Save Clause</button>
+                    <button id="btn-insert-custom-clause" class="btn btn-small">Insert Clause</button>
+                </div>
+            </section>
+
+            <section>
                 <h2>Guardrails</h2>
                 <ul id="guardrail-list" class="guardrail-list"></ul>
             </section>
