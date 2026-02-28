@@ -963,19 +963,30 @@ Date: {{date}}
         state.compare.targetRevision = targetRev.revision;
 
         const diff = buildLineDiff(baseRev.markdown, targetRev.markdown);
-        let leftHtml = '';
-        let rightHtml = '';
-        diff.rows.forEach((row) => {
-            leftHtml += '<div class="diff-line ' + row.cls + '">' + escapeHtml(row.left || ' ') + '</div>';
-            rightHtml += '<div class="diff-line ' + row.cls + '">' + escapeHtml(row.right || ' ') + '</div>';
-        });
-
+        const columns = (typeof revisionUtils.renderDiffColumns === 'function')
+            ? revisionUtils.renderDiffColumns(diff.rows, escapeHtml)
+            : { leftHtml: '', rightHtml: '' };
+        if (!columns.leftHtml && !columns.rightHtml) {
+            diff.rows.forEach((row) => {
+                columns.leftHtml += '<div class="diff-line ' + row.cls + '">' + escapeHtml(row.left || ' ') + '</div>';
+                columns.rightHtml += '<div class="diff-line ' + row.cls + '">' + escapeHtml(row.right || ' ') + '</div>';
+            });
+        }
+        if (typeof revisionUtils.renderDiffOutput === 'function') {
+            el.compareOutput.innerHTML = revisionUtils.renderDiffOutput(
+                baseRev.revision,
+                targetRev.revision,
+                diff,
+                columns,
+            );
+            return;
+        }
         el.compareOutput.innerHTML =
             '<p><strong>Revision ' + baseRev.revision + ' vs Revision ' + targetRev.revision + '</strong>' +
             ' | +' + diff.added + ' -' + diff.removed + ' ~' + diff.changed + '</p>' +
             '<div class="diff-grid">' +
-            '<div class="diff-col"><p class="muted">Base (R' + baseRev.revision + ')</p>' + leftHtml + '</div>' +
-            '<div class="diff-col"><p class="muted">Target (R' + targetRev.revision + ')</p>' + rightHtml + '</div>' +
+            '<div class="diff-col"><p class="muted">Base (R' + baseRev.revision + ')</p>' + columns.leftHtml + '</div>' +
+            '<div class="diff-col"><p class="muted">Target (R' + targetRev.revision + ')</p>' + columns.rightHtml + '</div>' +
             '</div>';
     }
 

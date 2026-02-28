@@ -85,10 +85,36 @@
         }));
     }
 
+    function renderDiffColumns(rows, escapeHtmlFn) {
+        const escapeFn = typeof escapeHtmlFn === 'function'
+            ? escapeHtmlFn
+            : function (text) { return String(text || ''); };
+        let leftHtml = '';
+        let rightHtml = '';
+        rows.forEach((row) => {
+            leftHtml += '<div class="diff-line ' + row.cls + '">' + escapeFn(row.left || ' ') + '</div>';
+            rightHtml += '<div class="diff-line ' + row.cls + '">' + escapeFn(row.right || ' ') + '</div>';
+        });
+        return { leftHtml: leftHtml, rightHtml: rightHtml };
+    }
+
+    function renderDiffOutput(baseRevision, targetRevision, diff, columns) {
+        return (
+            '<p><strong>Revision ' + baseRevision + ' vs Revision ' + targetRevision + '</strong>' +
+            ' | +' + diff.added + ' -' + diff.removed + ' ~' + diff.changed + '</p>' +
+            '<div class="diff-grid">' +
+            '<div class="diff-col"><p class="muted">Base (R' + baseRevision + ')</p>' + columns.leftHtml + '</div>' +
+            '<div class="diff-col"><p class="muted">Target (R' + targetRevision + ')</p>' + columns.rightHtml + '</div>' +
+            '</div>'
+        );
+    }
+
     window.SowRevisionUtils = {
         summarizeTextDiff: summarizeTextDiff,
         buildLineDiff: buildLineDiff,
         hashSignature: hashSignature,
         normalizeSignatures: normalizeSignatures,
+        renderDiffColumns: renderDiffColumns,
+        renderDiffOutput: renderDiffOutput,
     };
 })();
