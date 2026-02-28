@@ -93,7 +93,6 @@ def test_publish_persists_metadata(client):
             "signed": True,
             "revision": 4,
             "jurisdiction": "US_NY",
-            "strict_sanitize": False,
         },
     )
     assert response.status_code == 201

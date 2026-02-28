@@ -9,6 +9,7 @@
     const CLAUSE_STORE = 'custom_clauses';
     const SAVE_DEBOUNCE_MS = 500;
     const SEARCH_DEBOUNCE_MS = 220;
+    const PREVIEW_DEBOUNCE_MS = 140;
 
     const CLAUSE_MARKER_START = '<!-- CLAUSE_PACK_START -->';
     const CLAUSE_MARKER_END = '<!-- CLAUSE_PACK_END -->';
@@ -168,6 +169,7 @@ Date: {{date}}
         libraryFetchController: null,
         previewFetchController: null,
         previewRequestSeq: 0,
+        previewTimer: null,
     };
 
     const el = {
@@ -1295,10 +1297,23 @@ Date: {{date}}
                 if (err && err.name === 'AbortError') {
                     return;
                 }
-                // Fallback to local parser if the API preview request fails.
-                const localHtml = renderDocument(markdown, variables);
-                applyPreviewHtml(localHtml, revision, template);
+                // Safe fallback: avoid rendering unsanitized local HTML.
+                const fallbackHtml =
+                    '<p><strong>Preview unavailable.</strong> Showing raw markdown fallback.</p>' +
+                    '<pre>' + escapeHtml(markdown) + '</pre>';
+                applyPreviewHtml(fallbackHtml, revision, template);
             });
+    }
+
+    function schedulePreviewRender(immediate) {
+        clearTimeout(state.previewTimer);
+        if (immediate) {
+            renderPreview();
+            return;
+        }
+        state.previewTimer = setTimeout(function () {
+            renderPreview();
+        }, PREVIEW_DEBOUNCE_MS);
     }
 
     function bindClientForm(clientId) {
@@ -2034,7 +2049,6 @@ ${el.preview.innerHTML}
                 signed_only: revision ? revision.status === 'signed' : false,
                 signed: revision ? revision.status === 'signed' : false,
                 jurisdiction: state.currentDoc ? state.currentDoc.clausePack : 'US_BASE',
-                strict_sanitize: true,
             }),
         });
 
@@ -2089,7 +2103,7 @@ ${el.preview.innerHTML}
 
             setRevisionFromUi(revision);
             updateCharCount();
-            renderPreview();
+            schedulePreviewRender(false);
             queueSave();
         });
 
@@ -2100,7 +2114,7 @@ ${el.preview.innerHTML}
                 return;
             }
             setRevisionFromUi(revision);
-            renderPreview();
+            schedulePreviewRender(true);
             queueSave();
         });
 
@@ -2126,7 +2140,7 @@ ${el.preview.innerHTML}
                     state.currentDoc.title = input.value || 'Untitled SOW';
                     el.docName.textContent = state.currentDoc.title;
                 }
-                renderPreview();
+                schedulePreviewRender(false);
                 queueSave();
             });
         });
