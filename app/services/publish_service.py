@@ -99,3 +99,66 @@ def get_published_for_email(*, db, publish_id: str) -> dict:
     if expires_at < utc_now():
         raise ServiceError('Link expired', 410)
     return dict(row)
+
+
+def get_public_published_document(*, db, publish_id: str) -> dict:
+    """Load a published document for public rendering and increment views."""
+    row = db.execute(
+        '''SELECT id, title, html, created_at, expires_at, deleted
+           FROM published_docs
+           WHERE id = ?''',
+        (publish_id,),
+    ).fetchone()
+    if not row or row['deleted']:
+        raise ServiceError('Not found', 404)
+
+    expires_at = datetime.fromisoformat(row['expires_at'])
+    if expires_at < utc_now():
+        raise ServiceError('Link expired', 410)
+
+    db.execute('UPDATE published_docs SET views = views + 1 WHERE id = ?', (publish_id,))
+    db.commit()
+    return dict(row)
+
+
+def get_published_metadata(*, db, publish_id: str) -> dict:
+    """Load publish metadata by id."""
+    row = db.execute(
+        '''SELECT id, title, created_at, expires_at, deleted, views, revision, signed, jurisdiction, template, page_size
+           FROM published_docs WHERE id = ?''',
+        (publish_id,),
+    ).fetchone()
+    if not row:
+        raise ServiceError('Not found', 404)
+    return dict(row)
+
+
+def delete_published_document(*, db, publish_id: str) -> None:
+    """Soft-delete a published document by id."""
+    cursor = db.execute(
+        'UPDATE published_docs SET deleted = 1 WHERE id = ? AND deleted = 0',
+        (publish_id,),
+    )
+    db.commit()
+    if cursor.rowcount == 0:
+        raise ServiceError('Not found', 404)
+
+
+def cleanup_expired_published_documents(*, db) -> dict:
+    """Soft-delete all expired, non-deleted published documents."""
+    now = utc_now().isoformat()
+    scanned = db.execute(
+        'SELECT COUNT(*) FROM published_docs WHERE deleted = 0'
+    ).fetchone()[0]
+    cursor = db.execute(
+        '''UPDATE published_docs
+           SET deleted = 1
+           WHERE deleted = 0 AND expires_at < ?''',
+        (now,),
+    )
+    db.commit()
+    return {
+        'cleaned': cursor.rowcount,
+        'scanned': scanned,
+        'timestamp': now,
+    }

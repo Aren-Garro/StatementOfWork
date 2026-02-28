@@ -19,7 +19,15 @@ from app.markdown_parser import render_markdown
 from app.models import get_db
 from app.template_manager import TemplateManager
 from app.template_library import filter_library_items, load_curated_templates
-from app.services.publish_service import ServiceError, create_published_document, get_published_for_email
+from app.services.publish_service import (
+    ServiceError,
+    cleanup_expired_published_documents,
+    create_published_document,
+    delete_published_document,
+    get_public_published_document,
+    get_published_for_email,
+    get_published_metadata,
+)
 from app.services.email_delivery_service import send_published_email
 
 main_bp = Blueprint('main', __name__)
@@ -165,22 +173,14 @@ def published_doc(publish_id):
     """Read-only public document page."""
     publish_id = _normalize_doc_id(publish_id)
     db = get_db()
-    row = db.execute(
-        '''SELECT id, title, html, created_at, expires_at, deleted
-           FROM published_docs
-           WHERE id = ?''',
-        (publish_id,),
-    ).fetchone()
-
-    if not row or row['deleted']:
+    try:
+        row = get_public_published_document(db=db, publish_id=publish_id)
+    except ServiceError as exc:
+        if exc.status_code == 404:
+            return render_template('published.html', title='Not Found', content='<p>Document not found.</p>'), 404
+        if exc.status_code == 410:
+            return render_template('published.html', title='Expired', content='<p>This link has expired.</p>'), 410
         return render_template('published.html', title='Not Found', content='<p>Document not found.</p>'), 404
-
-    expires_at = datetime.fromisoformat(row['expires_at'])
-    if expires_at < _utc_now():
-        return render_template('published.html', title='Expired', content='<p>This link has expired.</p>'), 410
-
-    db.execute('UPDATE published_docs SET views = views + 1 WHERE id = ?', (publish_id,))
-    db.commit()
 
     return render_template('published.html', title=row['title'], content=row['html'])
 
@@ -443,16 +443,11 @@ def plugin_get_published(publish_id):
     """Get publish metadata."""
     publish_id = _normalize_doc_id(publish_id)
     db = get_db()
-    row = db.execute(
-        '''SELECT id, title, created_at, expires_at, deleted, views, revision, signed, jurisdiction, template, page_size
-           FROM published_docs WHERE id = ?''',
-        (publish_id,),
-    ).fetchone()
-
-    if not row:
-        return jsonify({'error': 'Not found'}), 404
-
-    return jsonify({'document': dict(row)})
+    try:
+        row = get_published_metadata(db=db, publish_id=publish_id)
+    except ServiceError as exc:
+        return jsonify({'error': str(exc)}), exc.status_code
+    return jsonify({'document': row})
 
 
 @plugin_bp.route('/v1/p/<publish_id>/email', methods=['POST'])
@@ -505,13 +500,10 @@ def plugin_delete_published(publish_id):
     """Soft-delete a published document."""
     publish_id = _normalize_doc_id(publish_id)
     db = get_db()
-    cursor = db.execute(
-        'UPDATE published_docs SET deleted = 1 WHERE id = ? AND deleted = 0',
-        (publish_id,),
-    )
-    db.commit()
-    if cursor.rowcount == 0:
-        return jsonify({'error': 'Not found'}), 404
+    try:
+        delete_published_document(db=db, publish_id=publish_id)
+    except ServiceError as exc:
+        return jsonify({'error': str(exc)}), exc.status_code
     return jsonify({'message': 'Deleted'})
 
 
@@ -530,23 +522,13 @@ def plugin_health_check():
 def plugin_cleanup():
     """Soft-delete all expired published docs."""
     db = get_db()
-    now = _utc_now().isoformat()
-    scanned = db.execute(
-        'SELECT COUNT(*) FROM published_docs WHERE deleted = 0'
-    ).fetchone()[0]
-    cursor = db.execute(
-        '''UPDATE published_docs
-           SET deleted = 1
-           WHERE deleted = 0 AND expires_at < ?''',
-        (now,),
-    )
-    db.commit()
-    _log_event('info', 'plugin.cleanup.completed', cleaned=cursor.rowcount, scanned=scanned, timestamp=now)
+    result = cleanup_expired_published_documents(db=db)
+    _log_event('info', 'plugin.cleanup.completed', **result)
     return jsonify(
         {
             'status': 'ok',
-            'cleaned': cursor.rowcount,
-            'scanned': scanned,
-            'timestamp': now,
+            'cleaned': result['cleaned'],
+            'scanned': result['scanned'],
+            'timestamp': result['timestamp'],
         }
     )
