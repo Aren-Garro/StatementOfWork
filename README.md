@@ -11,16 +11,16 @@ Commercial SOW and proposal software like PandaDoc ($228-$588/year per user), Dr
 | Feature | This Tool | PandaDoc Business | Dropbox Sign Standard | Upland Qvidian |
 |---------|-----------|-------------------|----------------------|----------------|
 | **Price** | **FREE** | $588/year/user | $300/year/user | Enterprise only |
-| Document templates | ✅ Unlimited | ✅ Unlimited | ✅ 15 templates | ✅ Enterprise |
-| E-signatures | ✅ Native capture | ✅ Included | ✅ Unlimited | ✅ Included |
-| Local-first editing | ✅ Full offline | ❌ Cloud only | ❌ Cloud only | ❌ Cloud only |
-| Revision history | ✅ Built-in | ✅ Included | ⚠️ Limited | ✅ Enterprise |
-| Export to PDF | ✅ Browser print | ✅ Included | ✅ Included | ✅ Included |
-| Custom branding | ✅ Full control | ⚠️ Business+ only | ⚠️ Standard+ only | ✅ Enterprise |
-| Data ownership | ✅ 100% yours | ❌ Cloud vendor | ❌ Cloud vendor | ❌ Cloud vendor |
-| API/Integration | ✅ Optional plugin | ✅ Included | ✅ $3,000+/year | ✅ Enterprise |
-| Vendor lock-in | ✅ None | ❌ High | ❌ High | ❌ Very high |
-| Jurisdiction clauses | ✅ US_BASE, US_NY, US_CA | ❌ Manual only | ❌ Manual only | ⚠️ Custom setup |
+| Document templates | Yes (unlimited) | Yes (unlimited) | Yes (15 templates) | Yes (enterprise) |
+| E-signatures | Yes (native capture) | Yes | Yes (unlimited) | Yes |
+| Local-first editing | Yes (full offline) | No (cloud only) | No (cloud only) | No (cloud only) |
+| Revision history | Yes (built-in) | Yes | Limited | Yes (enterprise) |
+| Export to PDF | Yes (browser print) | Yes | Yes | Yes |
+| Custom branding | Yes (full control) | Business+ only | Standard+ only | Yes (enterprise) |
+| Data ownership | Yes (100% yours) | No (cloud vendor) | No (cloud vendor) | No (cloud vendor) |
+| API/Integration | Yes (optional plugin) | Yes | Paid API tier | Yes (enterprise) |
+| Vendor lock-in | None | High | High | Very high |
+| Jurisdiction clauses | Yes (US/EU/UK/CA/AU) | Manual only | Manual only | Custom setup |
 
 ### What You Get That Others Charge For
 
@@ -90,6 +90,23 @@ python run.py
 ```
 
 Then open `http://localhost:5000`.
+
+## First-Run Setup Wizard
+
+On first launch, the app opens a setup wizard that configures:
+
+- Sharing plugin URL
+- SMTP host, sender identity, and transport settings
+- Optional plugin health check
+- Optional SMTP connectivity check
+
+You can reopen setup at any time from the **Sharing** button in the header.
+
+Setup API endpoints used by the wizard:
+
+- `GET /api/setup/status`
+- `POST /api/setup/check`
+- `POST /api/setup/save`
 
 ## Core Architecture
 
@@ -198,7 +215,7 @@ Import packages via the UI Import button.
 
 ### Local Use (No Cost)
 
-Run locally for personal use—no server required. Perfect for freelancers and solo consultants.
+Run locally for personal use - no server required. Perfect for freelancers and solo consultants.
 
 ### Self-Hosted Sharing (Your Infrastructure)
 
@@ -296,7 +313,7 @@ We believe creating professional, legally sound SOWs shouldn't require expensive
 
 ## Notes
 
-- Sharing is entirely optional—local editing and PDF export work fully offline
+- Sharing is entirely optional - local editing and PDF export work fully offline
 - Legacy `/api/*` endpoints remain available for backward compatibility
 - Threat model and security documentation: `docs/threat-model.md`
 - No telemetry, no phone-home, no hidden data collection
