@@ -12,6 +12,7 @@
     const PREVIEW_DEBOUNCE_MS = 140;
     const SUPPORTED_LOCALES = ['en', 'es', 'fr'];
     const utils = window.SowUtils || {};
+    const revisionUtils = window.SowRevisionUtils || {};
 
     const CLAUSE_MARKER_START = '<!-- CLAUSE_PACK_START -->';
     const CLAUSE_MARKER_END = '<!-- CLAUSE_PACK_END -->';
@@ -847,6 +848,9 @@ Date: {{date}}
     }
 
     function summarizeTextDiff(previousText, currentText) {
+        if (typeof revisionUtils.summarizeTextDiff === 'function') {
+            return revisionUtils.summarizeTextDiff(previousText, currentText);
+        }
         const previousLines = (previousText || '').split('\n');
         const currentLines = (currentText || '').split('\n');
         const previousSet = new Set(previousLines);
@@ -868,6 +872,9 @@ Date: {{date}}
     }
 
     function hashSignature(data) {
+        if (typeof revisionUtils.hashSignature === 'function') {
+            return revisionUtils.hashSignature(data);
+        }
         let hash = 2166136261;
         for (let i = 0; i < data.length; i += 1) {
             hash ^= data.charCodeAt(i);
@@ -877,6 +884,9 @@ Date: {{date}}
     }
 
     function normalizeSignatures(signatures) {
+        if (typeof revisionUtils.normalizeSignatures === 'function') {
+            return revisionUtils.normalizeSignatures(signatures, nowIso);
+        }
         if (!Array.isArray(signatures)) {
             return [];
         }
@@ -891,6 +901,9 @@ Date: {{date}}
     }
 
     function buildLineDiff(baseText, targetText) {
+        if (typeof revisionUtils.buildLineDiff === 'function') {
+            return revisionUtils.buildLineDiff(baseText, targetText);
+        }
         const base = (baseText || '').split('\n');
         const target = (targetText || '').split('\n');
         const max = Math.max(base.length, target.length);
