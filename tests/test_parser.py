@@ -96,6 +96,15 @@ def test_timeline_block_renders_gantt():
     assert 'W1-W2' in result
 
 
+def test_timeline_gantt_escapes_labels():
+    md = ''':::timeline
+- Week 1-2: <img src=x onerror=alert(1)>
+:::
+    '''
+    result = render_markdown(md)
+    assert '&lt;img src=x onerror=alert(1)&gt;' in result
+
+
 def test_signature_block():
     md = ''':::signature
 Client: John Doe
@@ -112,6 +121,16 @@ Date: 2026-01-01
     assert 'Jane Smith' in result
 
 
+def test_signature_block_escapes_values():
+    md = ''':::signature
+Client: <script>alert(1)</script>
+:::
+'''
+    result = render_markdown(md)
+    assert '&lt;script&gt;alert(1)&lt;/script&gt;' in result
+    assert '<script>alert(1)</script>' not in result
+
+
 def test_tables():
     md = '''| A | B |
 |---|---|
@@ -120,3 +139,22 @@ def test_tables():
     result = render_markdown(md)
     assert '<table>' in result
     assert '<td>' in result
+
+
+def test_repeated_custom_blocks_render_independently():
+    md = ''':::pricing
+| Item | Total |
+|---|---:|
+| A | $10 |
+:::
+
+:::pricing
+| Item | Total |
+|---|---:|
+| B | $20 |
+:::
+'''
+    result = render_markdown(md)
+    assert result.count('pricing-summary') == 2
+    assert 'A' in result
+    assert 'B' in result

@@ -166,6 +166,8 @@ Date: {{date}}
         },
         librarySearchTimer: null,
         libraryFetchController: null,
+        previewFetchController: null,
+        previewRequestSeq: 0,
     };
 
     const el = {
@@ -1242,18 +1244,61 @@ Date: {{date}}
         }).catch(console.error);
     }
 
+    function applyPreviewHtml(html, revision, theme) {
+        const signatureHtml = renderSignatureSummary(revision.signatures);
+        el.preview.className = 'preview theme-' + theme;
+        el.preview.innerHTML = html + signatureHtml;
+        renderGuardrails(el.editor.value, revision);
+    }
+
     function renderPreview() {
         const revision = getActiveRevision();
         if (!revision) {
             return;
         }
 
-        const html = renderDocument(el.editor.value, collectVariables());
-        const signatureHtml = renderSignatureSummary(revision.signatures);
+        const markdown = el.editor.value;
+        const variables = collectVariables();
+        const template = el.templateSelect.value;
+        const requestSeq = state.previewRequestSeq + 1;
+        state.previewRequestSeq = requestSeq;
 
-        el.preview.className = 'preview theme-' + el.templateSelect.value;
-        el.preview.innerHTML = html + signatureHtml;
-        renderGuardrails(el.editor.value, revision);
+        if (state.previewFetchController) {
+            state.previewFetchController.abort();
+        }
+        const controller = new AbortController();
+        state.previewFetchController = controller;
+
+        fetch('/api/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                markdown: markdown,
+                variables: variables,
+                template: template,
+            }),
+            signal: controller.signal,
+        })
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error('preview fetch failed');
+                }
+                return response.json();
+            })
+            .then((payload) => {
+                if (requestSeq !== state.previewRequestSeq) {
+                    return;
+                }
+                applyPreviewHtml(payload.html || '', revision, template);
+            })
+            .catch((err) => {
+                if (err && err.name === 'AbortError') {
+                    return;
+                }
+                // Fallback to local parser if the API preview request fails.
+                const localHtml = renderDocument(markdown, variables);
+                applyPreviewHtml(localHtml, revision, template);
+            });
     }
 
     function bindClientForm(clientId) {

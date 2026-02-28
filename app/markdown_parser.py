@@ -10,14 +10,17 @@ Supports variable substitution:
   {{variable_name}} -> replaced with value from variables dict
 """
 import re
+from html import escape
 from markdown_it import MarkdownIt
+
+
+_MD = MarkdownIt('commonmark', {'html': True})
+_MD.enable('table')
 
 
 def _render_inner_markdown(text: str) -> str:
     """Render markdown fragments used inside custom blocks."""
-    inner_md = MarkdownIt('commonmark', {'html': True})
-    inner_md.enable('table')
-    return inner_md.render(text)
+    return _MD.render(text)
 
 
 def _substitute_variables(text: str, variables: dict) -> str:
@@ -162,7 +165,8 @@ def _build_timeline_gantt(content: str) -> str:
         width = (((row['end'] - row['start'] + 1) / span) * 100)
         html += (
             '<div class="gantt-row">'
-            f'<div class="gantt-label">{row["label"]} <span class="muted">(W{row["start"]}-W{row["end"]})</span></div>'
+            f'<div class="gantt-label">{escape(row["label"])} '
+            f'<span class="muted">(W{row["start"]}-W{row["end"]})</span></div>'
             '<div class="gantt-track">'
             f'<div class="gantt-bar" style="margin-left:{offset:.2f}%;width:{width:.2f}%;"></div>'
             '</div>'
@@ -215,12 +219,12 @@ def _build_sig_block(lines: list) -> str:
         if ':' in line:
             label, value = line.split(':', 1)
             html += '  <div class="sig-field">'
-            html += f'<span class="sig-label">{label.strip()}:</span> '
-            html += f'<span class="sig-value">{value.strip()}</span>'
+            html += f'<span class="sig-label">{escape(label.strip())}:</span> '
+            html += f'<span class="sig-value">{escape(value.strip())}</span>'
             html += '<div class="sig-line"></div>'
             html += '</div>\n'
         else:
-            html += f'  <p>{line}</p>\n'
+            html += f'  <p>{escape(line)}</p>\n'
     html += '</div>\n'
     return html
 
@@ -251,10 +255,7 @@ def render_markdown(text: str, variables: dict = None) -> str:
     text = _process_custom_blocks(text)
 
     # Parse markdown
-    md = MarkdownIt('commonmark', {'html': True})
-    md.enable('table')
-
-    html = md.render(text)
+    html = _MD.render(text)
     return html
 
 
@@ -268,10 +269,7 @@ def _process_custom_blocks(text: str) -> str:
 
     for block_type, renderer in block_types.items():
         pattern = rf':::{block_type}\s*\n(.*?)\n:::'
-        matches = re.finditer(pattern, text, flags=re.DOTALL)
-        for match in matches:
-            content = match.group(1)
-            rendered = renderer(content)
-            text = text.replace(match.group(0), rendered)
+        compiled = re.compile(pattern, flags=re.DOTALL)
+        text = compiled.sub(lambda match: renderer(match.group(1)), text)
 
     return text
