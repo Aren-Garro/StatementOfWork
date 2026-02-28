@@ -221,20 +221,11 @@ def _render_signature_block(content: str) -> str:
 
 
 def _signature_blocks(content: str) -> list[list[str]]:
-    blocks: list[list[str]] = []
-    current: list[str] = []
-    for raw_line in content.strip().split('\n'):
-        line = raw_line.strip()
-        if not line:
-            continue
-        if line == '---':
-            if current:
-                blocks.append(current)
-                current = []
-            continue
-        current.append(line)
-    if current:
-        blocks.append(current)
+    blocks = []
+    for section in content.strip().split('---'):
+        lines = [line.strip() for line in section.split('\n') if line.strip()]
+        if lines:
+            blocks.append(lines)
     return blocks
 
 
