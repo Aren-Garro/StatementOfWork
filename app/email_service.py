@@ -27,6 +27,22 @@ def _parse_bool(value: str | None, default: bool) -> bool:
     return default
 
 
+def _required_missing(settings: dict, keys: tuple[str, ...]) -> list[str]:
+    missing = []
+    for key in keys:
+        if not settings.get(key):
+            missing.append(f'SMTP_{key.upper()}')
+    return missing
+
+
+def _validate_smtp_settings(settings: dict) -> None:
+    missing = _required_missing(settings, ('host', 'from_email'))
+    if missing:
+        raise EmailConfigError(f"Missing SMTP configuration: {', '.join(missing)}")
+    if settings["use_ssl"] and settings["use_starttls"]:
+        raise EmailConfigError("SMTP_USE_SSL and SMTP_USE_STARTTLS cannot both be true")
+
+
 def _load_smtp_settings() -> dict:
     settings = {
         "host": (os.environ.get("SMTP_HOST") or "").strip(),
@@ -39,15 +55,7 @@ def _load_smtp_settings() -> dict:
         "use_ssl": _parse_bool(os.environ.get("SMTP_USE_SSL"), False),
         "timeout_seconds": int(os.environ.get("SMTP_TIMEOUT_SECONDS", "10")),
     }
-    missing = []
-    if not settings["host"]:
-        missing.append("SMTP_HOST")
-    if not settings["from_email"]:
-        missing.append("SMTP_FROM_EMAIL")
-    if missing:
-        raise EmailConfigError(f"Missing SMTP configuration: {', '.join(missing)}")
-    if settings["use_ssl"] and settings["use_starttls"]:
-        raise EmailConfigError("SMTP_USE_SSL and SMTP_USE_STARTTLS cannot both be true")
+    _validate_smtp_settings(settings)
     return settings
 
 

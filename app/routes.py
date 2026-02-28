@@ -202,21 +202,8 @@ def _parse_publish_email_request(data: dict) -> dict:
     }
 
 
-def _validate_template_payload(data: dict, *, for_update: bool) -> str | None:
-    """Return validation error text for template payloads."""
-    if for_update:
-        if 'name' in data and not isinstance(data.get('name'), str):
-            return 'name must be a string'
-        if 'name' in data and not data.get('name', '').strip():
-            return 'name cannot be empty'
-        if 'description' in data and not isinstance(data.get('description'), str):
-            return 'description must be a string'
-        if 'markdown' in data and not isinstance(data.get('markdown'), str):
-            return 'markdown must be a string'
-        if 'variables' in data and not isinstance(data.get('variables'), dict):
-            return 'variables must be an object'
-        return None
-
+def _validate_template_create_payload(data: dict) -> str | None:
+    """Return validation error text for template create payloads."""
     name = data.get('name')
     markdown = data.get('markdown')
     variables = data.get('variables', {})
@@ -226,6 +213,22 @@ def _validate_template_payload(data: dict, *, for_update: bool) -> str | None:
         return 'markdown is required'
     if not isinstance(variables, dict):
         return 'variables must be an object'
+    return None
+
+
+def _validate_template_update_payload(data: dict) -> str | None:
+    """Return validation error text for template update payloads."""
+    checks = (
+        ('name', str, 'name must be a string'),
+        ('description', str, 'description must be a string'),
+        ('markdown', str, 'markdown must be a string'),
+        ('variables', dict, 'variables must be an object'),
+    )
+    for field, expected_type, message in checks:
+        if field in data and not isinstance(data.get(field), expected_type):
+            return message
+    if 'name' in data and not data.get('name', '').strip():
+        return 'name cannot be empty'
     return None
 
 
@@ -368,7 +371,7 @@ def save_template():
     if data is None:
         return jsonify({'error': 'JSON object body is required'}), 400
 
-    error = _validate_template_payload(data, for_update=False)
+    error = _validate_template_create_payload(data)
     if error:
         return jsonify({'error': error}), 400
 
@@ -399,7 +402,7 @@ def update_template(template_id):
     if data is None:
         return jsonify({'error': 'JSON object body is required'}), 400
 
-    error = _validate_template_payload(data, for_update=True)
+    error = _validate_template_update_payload(data)
     if error:
         return jsonify({'error': error}), 400
 
