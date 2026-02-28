@@ -48,6 +48,25 @@ def test_publish_rejects_invalid_jurisdiction(client):
     assert "jurisdiction" in response.get_json()["error"]
 
 
+@pytest.mark.parametrize(
+    "jurisdiction",
+    ["EU_BASE", "UK_BASE", "CA_BASE", "AU_BASE"],
+)
+def test_publish_accepts_new_jurisdictions(client, jurisdiction):
+    test_client, _ = client
+    response = test_client.post(
+        "/plugin/v1/publish",
+        json={
+            "title": "Valid Jurisdiction",
+            "html": "<h1>Hello</h1>",
+            "jurisdiction": jurisdiction,
+        },
+    )
+    assert response.status_code == 201
+    payload = response.get_json()
+    assert payload["jurisdiction"] == jurisdiction
+
+
 def test_publish_parses_boolean_strings(client):
     test_client, _ = client
     response = test_client.post(

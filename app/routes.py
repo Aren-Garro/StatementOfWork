@@ -29,7 +29,15 @@ _RATE_WINDOW_SECONDS = 60
 _RATE_LIMIT_PER_WINDOW = 20
 _CAPTCHA_THRESHOLD_PER_WINDOW = 10
 _rate_events = defaultdict(deque)
-_ALLOWED_JURISDICTIONS = {'US_BASE', 'US_NY', 'US_CA'}
+_ALLOWED_JURISDICTIONS = {
+    'US_BASE',
+    'US_NY',
+    'US_CA',
+    'EU_BASE',
+    'UK_BASE',
+    'CA_BASE',
+    'AU_BASE',
+}
 
 
 def _utc_now() -> datetime:

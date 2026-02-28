@@ -32,7 +32,7 @@ Commercial SOW and proposal software like PandaDoc ($228-$588/year per user), Dr
 - **Instant PDF generation**: Browser-native print-to-PDF (no cloud processing)
 - **Client profile management**: Store client details locally with variable autofill
 - **Revision control**: Complete history with read-only prior versions and automatic/manual forking
-- **Jurisdiction clause packs**: Pre-configured legal clauses for US_BASE, US_NY, and US_CA with compliance checks
+- **Jurisdiction clause packs**: Pre-configured legal clauses for US_BASE, US_NY, US_CA, EU_BASE, UK_BASE, CA_BASE, and AU_BASE with compliance checks
 - **Import/Export**: Markdown and JSON portability for backup and migration
 
 **Optional Sharing Plugin (Self-Hosted)**
@@ -65,7 +65,7 @@ Commercial SOW and proposal software like PandaDoc ($228-$588/year per user), Dr
 - Self-hosted: deploy on your infrastructure
 
 ### Legal & Compliance
-- US jurisdiction clause packs (BASE, NY, CA)
+- Jurisdiction clause packs (US_BASE, US_NY, US_CA, EU_BASE, UK_BASE, CA_BASE, AU_BASE)
 - Required-section validation before finalization
 - Revision history for legal audit trail
 - Custom clause library support
@@ -236,14 +236,14 @@ Deploy on your own server or cloud platform:
 
 ### Planned Enhancements
 
-- [ ] Additional jurisdiction packs (EU, UK, Canada, Australia)
-- [ ] Enhanced template gallery with industry-specific examples
+- [x] Additional jurisdiction packs (EU, UK, Canada, Australia)
+- [x] Enhanced template gallery with industry-specific examples
 - [ ] Multi-language support for international consultants
 - [ ] Advanced pricing table calculations (discounts, taxes)
 - [ ] Gantt chart integration for timeline visualization
 - [ ] Custom clause library builder UI
 - [ ] Email integration for direct client delivery
-- [ ] Mobile-responsive signature capture
+- [x] Mobile-responsive signature capture
 
 ### How to Contribute
 

@@ -35,6 +35,34 @@
 - Reimbursements and acceptance criteria should be listed to reduce disputes.
 - Scope changes require written approval and updated schedule/fees.
 `,
+        EU_BASE: `## Legal Terms (EU Baseline)
+
+- Personal data handling must comply with GDPR and agreed data processing terms.
+- Confidential information and customer data must be protected with appropriate controls.
+- Intellectual property ownership and license boundaries must be explicit in writing.
+- Scope changes require written approval and updated schedule/fees.
+`,
+        UK_BASE: `## Legal Terms (United Kingdom)
+
+- Engagement terms should align with UK contractor and service agreement practices.
+- Data handling must comply with UK GDPR and applicable data protection obligations.
+- Payment timing, acceptance criteria, and late-payment remedies should be explicit.
+- Scope changes require written approval and updated schedule/fees.
+`,
+        CA_BASE: `## Legal Terms (Canada)
+
+- Engagement terms should define deliverables, acceptance criteria, and payment timelines.
+- Privacy and personal information handling must align with applicable Canadian requirements.
+- Intellectual property transfer and retained rights must be documented clearly.
+- Scope changes require written approval and updated schedule/fees.
+`,
+        AU_BASE: `## Legal Terms (Australia)
+
+- Service terms should define scope, milestones, and acceptance criteria in writing.
+- Privacy obligations should align with applicable Australian privacy requirements.
+- IP ownership, licensing, and moral-right considerations should be documented.
+- Scope changes require written approval and updated schedule/fees.
+`,
     };
 
     const REQUIRED_GUARDRAILS = [
