@@ -35,16 +35,12 @@ def filter_library_items(
     """Apply query and industry filters to a list of template items."""
     q = (query or "").strip().lower()
     wanted_industry = (industry or "").strip().lower()
-
-    filtered: list[dict[str, Any]] = []
-    for item in items:
-        if not _matches_industry(item, wanted_industry):
-            continue
-        if q and q not in _search_haystack(item):
-            continue
-
-        filtered.append(item)
-    return filtered
+    return [
+        item
+        for item in items
+        if _matches_industry(item, wanted_industry)
+        and _matches_query(item, q)
+    ]
 
 
 def _matches_industry(item: dict[str, Any], wanted_industry: str) -> bool:
@@ -52,6 +48,12 @@ def _matches_industry(item: dict[str, Any], wanted_industry: str) -> bool:
         return True
     item_industry = str(item.get("industry", "")).lower()
     return item_industry == wanted_industry
+
+
+def _matches_query(item: dict[str, Any], query: str) -> bool:
+    if not query:
+        return True
+    return query in _search_haystack(item)
 
 
 def _normalized_tags(item: dict[str, Any]) -> list[str]:

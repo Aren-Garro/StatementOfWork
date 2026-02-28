@@ -215,41 +215,46 @@ def _render_timeline_block(content: str) -> str:
 
 def _render_signature_block(content: str) -> str:
     """Render a signature block with signature lines."""
-    lines = content.strip().split('\n')
-    sig_html = '<div class="sow-signatures">\n'
-    current_block = []
+    blocks = _signature_blocks(content)
+    body = ''.join(_build_sig_block(block) for block in blocks)
+    return f'<div class="sow-signatures">\n{body}</div>'
 
-    for line in lines:
-        line = line.strip()
+
+def _signature_blocks(content: str) -> list[list[str]]:
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for raw_line in content.strip().split('\n'):
+        line = raw_line.strip()
+        if not line:
+            continue
         if line == '---':
-            if current_block:
-                sig_html += _build_sig_block(current_block)
-                current_block = []
-        elif line:
-            current_block.append(line)
+            if current:
+                blocks.append(current)
+                current = []
+            continue
+        current.append(line)
+    if current:
+        blocks.append(current)
+    return blocks
 
-    if current_block:
-        sig_html += _build_sig_block(current_block)
 
-    sig_html += '</div>'
-    return sig_html
+def _render_signature_line(line: str) -> str:
+    if ':' not in line:
+        return f'  <p>{escape(line)}</p>\n'
+    label, value = line.split(':', 1)
+    return (
+        '  <div class="sig-field">'
+        f'<span class="sig-label">{escape(label.strip())}:</span> '
+        f'<span class="sig-value">{escape(value.strip())}</span>'
+        '<div class="sig-line"></div>'
+        '</div>\n'
+    )
 
 
 def _build_sig_block(lines: list) -> str:
     """Build a single signature block HTML."""
-    html = '<div class="sig-block">\n'
-    for line in lines:
-        if ':' in line:
-            label, value = line.split(':', 1)
-            html += '  <div class="sig-field">'
-            html += f'<span class="sig-label">{escape(label.strip())}:</span> '
-            html += f'<span class="sig-value">{escape(value.strip())}</span>'
-            html += '<div class="sig-line"></div>'
-            html += '</div>\n'
-        else:
-            html += f'  <p>{escape(line)}</p>\n'
-    html += '</div>\n'
-    return html
+    html = ''.join(_render_signature_line(line) for line in lines)
+    return f'<div class="sig-block">\n{html}</div>\n'
 
 
 def render_markdown(text: str, variables: dict = None) -> str:
