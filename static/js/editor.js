@@ -11,6 +11,7 @@
     const SEARCH_DEBOUNCE_MS = 220;
     const PREVIEW_DEBOUNCE_MS = 140;
     const SUPPORTED_LOCALES = ['en', 'es', 'fr'];
+    const utils = window.SowUtils || {};
 
     const CLAUSE_MARKER_START = '<!-- CLAUSE_PACK_START -->';
     const CLAUSE_MARKER_END = '<!-- CLAUSE_PACK_END -->';
@@ -436,6 +437,9 @@ Date: {{date}}
     };
 
     function uid(prefix) {
+        if (typeof utils.uid === 'function') {
+            return utils.uid(prefix);
+        }
         return (prefix || 'id') + '_' + Math.random().toString(36).slice(2, 11);
     }
 
@@ -489,14 +493,23 @@ Date: {{date}}
     }
 
     function nowIso() {
+        if (typeof utils.nowIso === 'function') {
+            return utils.nowIso();
+        }
         return new Date().toISOString();
     }
 
     function today() {
+        if (typeof utils.todayIso === 'function') {
+            return utils.todayIso();
+        }
         return new Date().toISOString().split('T')[0];
     }
 
     function escapeHtml(text) {
+        if (typeof utils.escapeHtml === 'function') {
+            return utils.escapeHtml(text);
+        }
         return (text || '')
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')
@@ -506,6 +519,9 @@ Date: {{date}}
     }
 
     function inline(text) {
+        if (typeof utils.inline === 'function') {
+            return utils.inline(text);
+        }
         let out = escapeHtml(text);
         out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         out = out.replace(/\*(.+?)\*/g, '<em>$1</em>');
@@ -546,12 +562,18 @@ Date: {{date}}
     }
 
     function parseMoney(value) {
+        if (typeof utils.parseMoney === 'function') {
+            return utils.parseMoney(value);
+        }
         const cleaned = String(value || '').replace(/[^0-9.\-]/g, '');
         const amount = Number(cleaned);
         return Number.isFinite(amount) ? amount : null;
     }
 
     function formatMoney(amount) {
+        if (typeof utils.formatMoney === 'function') {
+            return utils.formatMoney(amount);
+        }
         return '$' + amount.toFixed(2);
     }
 
