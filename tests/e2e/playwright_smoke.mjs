@@ -39,3 +39,37 @@ test("new library, compare, and signature modal controls render", async ({ page 
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.locator("#signature-modal")).toBeHidden();
 });
+
+test("compare view renders and signature capture can be accepted", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5000/");
+
+  await page.locator("#markdown-editor").click();
+  await page.locator("#markdown-editor").press("End");
+  await page.locator("#markdown-editor").type("\n- Playwright diff marker");
+  await page.getByRole("button", { name: "New Revision" }).click();
+
+  await page.locator("#markdown-editor").click();
+  await page.locator("#markdown-editor").press("End");
+  await page.locator("#markdown-editor").type("\n- Revision two marker");
+
+  await page.selectOption("#compare-base", { label: "Revision 1" });
+  await page.selectOption("#compare-target", { label: "Revision 2" });
+  await page.getByRole("button", { name: "Compare" }).click();
+  await expect(page.locator("#compare-output")).toContainText("Revision 1 vs Revision 2");
+
+  await page.getByRole("button", { name: "Sign as Consultant" }).click();
+  await page.fill("#signature-name", "Playwright Consultant");
+  const canvas = page.locator("#signature-canvas");
+  const box = await canvas.boundingBox();
+  if (!box) {
+    throw new Error("signature canvas not visible");
+  }
+  await page.mouse.move(box.x + 20, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 140, box.y + 90, { steps: 8 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Accept Signature" }).click();
+
+  await expect(page.locator("#signature-modal")).toBeHidden();
+  await expect(page.locator("#preview-content")).toContainText("Playwright Consultant");
+});
