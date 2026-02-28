@@ -209,6 +209,56 @@ def _parse_publish_email_request(data: dict) -> dict:
     }
 
 
+def _normalized_curated_templates(items: list[dict]) -> list[dict]:
+    normalized = []
+    for item in items:
+        record = dict(item)
+        record['templateId'] = record.get('templateId', 'modern')
+        record['source'] = 'curated'
+        normalized.append(record)
+    return normalized
+
+
+def _normalized_user_templates(items: list[dict]) -> list[dict]:
+    normalized = []
+    for template in items:
+        normalized.append(
+            {
+                'id': f"user_{template['id']}",
+                'name': template.get('name', ''),
+                'description': template.get('description', ''),
+                'industry': 'Custom',
+                'tags': ['saved', 'custom'],
+                'markdown': template.get('markdown', ''),
+                'variables': template.get('variables', {}),
+                'source': 'user',
+                'templateId': template.get('pdf_template', 'modern'),
+            }
+        )
+    return normalized
+
+
+def _template_industries(items: list[dict]) -> list[str]:
+    return sorted(
+        {str(item.get('industry', '')).strip() for item in items if str(item.get('industry', '')).strip()}
+    )
+
+
+def _publish_response_payload(published: dict, *, host_url: str) -> dict:
+    view_url = f"{host_url.rstrip('/')}/p/{published['publish_id']}"
+    return {
+        'publish_id': published['publish_id'],
+        'view_url': view_url,
+        'expires_at': published['expires_at'],
+        'revision': published['revision'],
+        'signed': published['signed'],
+        'jurisdiction': published['jurisdiction'],
+        'template': published['template'],
+        'page_size': published['page_size'],
+        'sanitized': True,
+    }
+
+
 def _validate_template_create_payload(data: dict) -> str | None:
     """Return validation error text for template create payloads."""
     name = data.get('name')
@@ -328,37 +378,16 @@ def template_library():
     limit = max(1, min(100, _parse_int(request.args.get('limit'), 25)))
     offset = max(0, _parse_int(request.args.get('offset'), 0))
 
-    curated = []
-    for item in load_curated_templates():
-        normalized = dict(item)
-        normalized['templateId'] = normalized.get('templateId', 'modern')
-        normalized['source'] = 'curated'
-        curated.append(normalized)
+    curated = _normalized_curated_templates(load_curated_templates())
 
     tm = TemplateManager()
-    user_templates = []
-    for t in tm.list_templates():
-        user_templates.append(
-            {
-                'id': f"user_{t['id']}",
-                'name': t.get('name', ''),
-                'description': t.get('description', ''),
-                'industry': 'Custom',
-                'tags': ['saved', 'custom'],
-                'markdown': t.get('markdown', ''),
-                'variables': t.get('variables', {}),
-                'source': 'user',
-                'templateId': t.get('pdf_template', 'modern'),
-            }
-        )
+    user_templates = _normalized_user_templates(tm.list_templates())
 
     merged = curated + user_templates
     filtered = filter_library_items(merged, query=q, industry=industry)
     total = len(filtered)
     page = filtered[offset:offset + limit]
-    industries = sorted(
-        {str(item.get('industry', '')).strip() for item in merged if str(item.get('industry', '')).strip()}
-    )
+    industries = _template_industries(merged)
 
     return jsonify(
         {
@@ -466,7 +495,7 @@ def publish_document():
         _log_event('info', 'plugin.publish.invalid', client_ip=client_ip, error=str(exc))
         return jsonify({'error': str(exc)}), exc.status_code
 
-    view_url = f"{request.host_url.rstrip('/')}/p/{published['publish_id']}"
+    response = _publish_response_payload(published, host_url=request.host_url)
     _log_event(
         'info',
         'plugin.publish.created',
@@ -479,19 +508,7 @@ def publish_document():
         page_size=published['page_size'],
         expires_at=published['expires_at'],
     )
-    return jsonify(
-        {
-            'publish_id': published['publish_id'],
-            'view_url': view_url,
-            'expires_at': published['expires_at'],
-            'revision': published['revision'],
-            'signed': published['signed'],
-            'jurisdiction': published['jurisdiction'],
-            'template': published['template'],
-            'page_size': published['page_size'],
-            'sanitized': True,
-        }
-    ), 201
+    return jsonify(response), 201
 
 
 @plugin_bp.route('/v1/p/<publish_id>', methods=['GET'])
