@@ -55,6 +55,24 @@ def test_pricing_block():
     assert 'Dev' in result
 
 
+def test_pricing_block_summary_calculations():
+    md = ''':::pricing
+| Item | Total |
+|------|------:|
+| Discovery | $200 |
+| Build | $300 |
+Discount: 10%
+Tax: 8%
+:::
+'''
+    result = render_markdown(md)
+    assert 'pricing-summary' in result
+    assert 'Subtotal:' in result
+    assert 'Discount (10%)' in result
+    assert 'Tax (8%)' in result
+    assert 'Total:' in result
+
+
 def test_timeline_block():
     md = ''':::timeline
 - Phase 1: Week 1
@@ -64,6 +82,18 @@ def test_timeline_block():
     result = render_markdown(md)
     assert 'sow-timeline' in result
     assert 'Phase 1' in result
+
+
+def test_timeline_block_renders_gantt():
+    md = ''':::timeline
+- Week 1-2: Discovery
+- Week 3-5: Build
+:::
+'''
+    result = render_markdown(md)
+    assert 'sow-gantt' in result
+    assert 'gantt-bar' in result
+    assert 'W1-W2' in result
 
 
 def test_signature_block():

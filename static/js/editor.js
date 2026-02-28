@@ -8,6 +8,7 @@
     const CLIENT_STORE = 'clients';
     const CLAUSE_STORE = 'custom_clauses';
     const SAVE_DEBOUNCE_MS = 500;
+    const SEARCH_DEBOUNCE_MS = 220;
 
     const CLAUSE_MARKER_START = '<!-- CLAUSE_PACK_START -->';
     const CLAUSE_MARKER_END = '<!-- CLAUSE_PACK_END -->';
@@ -163,6 +164,8 @@ Date: {{date}}
             lastX: 0,
             lastY: 0,
         },
+        librarySearchTimer: null,
+        libraryFetchController: null,
     };
 
     const el = {
@@ -728,9 +731,17 @@ Date: {{date}}
 
     async function loadLibraryTemplates() {
         try {
+            if (state.libraryFetchController) {
+                state.libraryFetchController.abort();
+            }
+            const controller = new AbortController();
+            state.libraryFetchController = controller;
             const q = encodeURIComponent((el.librarySearch.value || '').trim());
             const industry = encodeURIComponent((el.libraryIndustry.value || '').trim());
-            const response = await fetch('/api/templates/library?q=' + q + '&industry=' + industry + '&limit=40&offset=0');
+            const response = await fetch(
+                '/api/templates/library?q=' + q + '&industry=' + industry + '&limit=40&offset=0',
+                { signal: controller.signal }
+            );
             if (!response.ok) {
                 throw new Error('library fetch failed');
             }
@@ -739,9 +750,19 @@ Date: {{date}}
             renderLibraryIndustryOptions(payload.industries || []);
             renderLibraryList();
         } catch (err) {
+            if (err && err.name === 'AbortError') {
+                return;
+            }
             console.error(err);
             el.libraryList.innerHTML = '<p class="muted">Template library unavailable.</p>';
         }
+    }
+
+    function scheduleLibraryRefresh() {
+        clearTimeout(state.librarySearchTimer);
+        state.librarySearchTimer = setTimeout(function () {
+            loadLibraryTemplates().catch(console.error);
+        }, SEARCH_DEBOUNCE_MS);
     }
 
     function renderLibraryIndustryOptions(industries) {
@@ -2092,10 +2113,10 @@ ${el.preview.innerHTML}
         el.compareBase.addEventListener('change', renderComparison);
         el.compareTarget.addEventListener('change', renderComparison);
         el.librarySearch.addEventListener('input', function () {
-            loadLibraryTemplates().catch(console.error);
+            scheduleLibraryRefresh();
         });
         el.libraryIndustry.addEventListener('change', function () {
-            loadLibraryTemplates().catch(console.error);
+            scheduleLibraryRefresh();
         });
         el.btnSignatureClear.addEventListener('click', resetSignatureCanvas);
         el.btnSignatureCancel.addEventListener('click', closeSignatureModal);

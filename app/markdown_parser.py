@@ -13,6 +13,13 @@ import re
 from markdown_it import MarkdownIt
 
 
+def _render_inner_markdown(text: str) -> str:
+    """Render markdown fragments used inside custom blocks."""
+    inner_md = MarkdownIt('commonmark', {'html': True})
+    inner_md.enable('table')
+    return inner_md.render(text)
+
+
 def _substitute_variables(text: str, variables: dict) -> str:
     """Replace {{variable_name}} placeholders with values."""
     def replacer(match):
@@ -39,14 +46,144 @@ def _extract_variables_block(text: str) -> tuple[str, dict]:
     return text, extracted_vars
 
 
+def _parse_money(value: str) -> float | None:
+    cleaned = re.sub(r'[^0-9.\-]', '', str(value or ''))
+    try:
+        return float(cleaned)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_money(amount: float) -> str:
+    return f'${amount:.2f}'
+
+
+def _build_pricing_summary(content: str) -> str:
+    lines = content.replace('\r\n', '\n').split('\n')
+    subtotal = 0.0
+    discount_pct = 0.0
+    tax_pct = 0.0
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if re.match(r'^discount\s*:', line, flags=re.IGNORECASE):
+            match = re.search(r'(-?\d+(\.\d+)?)\s*%?', line)
+            if match:
+                discount_pct = float(match.group(1))
+            continue
+        if re.match(r'^tax\s*:', line, flags=re.IGNORECASE):
+            match = re.search(r'(-?\d+(\.\d+)?)\s*%?', line)
+            if match:
+                tax_pct = float(match.group(1))
+            continue
+        if '|' not in line or re.match(r'^\s*\|?[-:|\s]+\|?\s*$', line):
+            continue
+
+        cells = [cell.strip() for cell in line.split('|') if cell.strip()]
+        if len(cells) < 2:
+            continue
+        if 'total' in cells[0].lower():
+            continue
+        maybe_amount = _parse_money(cells[-1])
+        if maybe_amount is None:
+            continue
+        subtotal += maybe_amount
+
+    discount_amount = subtotal * (discount_pct / 100.0)
+    discounted = subtotal - discount_amount
+    tax_amount = discounted * (tax_pct / 100.0)
+    grand_total = discounted + tax_amount
+
+    html = (
+        '<div class="pricing-summary">'
+        f'<div><strong>Subtotal:</strong> {_format_money(subtotal)}</div>'
+    )
+    if discount_pct != 0:
+        html += (
+            f'<div><strong>Discount ({discount_pct:g}%):</strong> -{_format_money(discount_amount)}</div>'
+        )
+    if tax_pct != 0:
+        html += (
+            f'<div><strong>Tax ({tax_pct:g}%):</strong> {_format_money(tax_amount)}</div>'
+        )
+    html += (
+        f'<div class="pricing-grand-total"><strong>Total:</strong> {_format_money(grand_total)}</div>'
+        '</div>'
+    )
+    return html
+
+
+def _build_timeline_gantt(content: str) -> str:
+    rows = []
+    lines = content.replace('\r\n', '\n').split('\n')
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not re.match(r'^[-*]\s+', line):
+            continue
+        entry = re.sub(r'^[-*]\s+', '', line)
+
+        range_match = re.search(
+            r'(?:week|wk)?\s*(\d+)\s*-\s*(\d+)\s*:\s*(.+)$',
+            entry,
+            flags=re.IGNORECASE,
+        )
+        if range_match:
+            rows.append(
+                {
+                    'start': int(range_match.group(1)),
+                    'end': int(range_match.group(2)),
+                    'label': range_match.group(3).strip(),
+                }
+            )
+            continue
+
+        point_match = re.search(r'(?:week|wk)?\s*(\d+)\s*:\s*(.+)$', entry, flags=re.IGNORECASE)
+        if point_match:
+            point = int(point_match.group(1))
+            rows.append(
+                {
+                    'start': point,
+                    'end': point,
+                    'label': point_match.group(2).strip(),
+                }
+            )
+
+    if not rows:
+        return ''
+
+    min_start = min(row['start'] for row in rows)
+    max_end = max(row['end'] for row in rows)
+    span = max(1, (max_end - min_start + 1))
+
+    html = '<div class="sow-gantt"><h4>Gantt View</h4>'
+    for row in rows:
+        offset = ((row['start'] - min_start) / span) * 100
+        width = (((row['end'] - row['start'] + 1) / span) * 100)
+        html += (
+            '<div class="gantt-row">'
+            f'<div class="gantt-label">{row["label"]} <span class="muted">(W{row["start"]}-W{row["end"]})</span></div>'
+            '<div class="gantt-track">'
+            f'<div class="gantt-bar" style="margin-left:{offset:.2f}%;width:{width:.2f}%;"></div>'
+            '</div>'
+            '</div>'
+        )
+    html += '</div>'
+    return html
+
+
 def _render_pricing_block(content: str) -> str:
     """Render a pricing table with auto-calculated totals."""
-    return f'<div class="sow-pricing">\n{content}\n</div>'
+    rendered = _render_inner_markdown(content)
+    summary = _build_pricing_summary(content)
+    return f'<div class="sow-pricing">\n{rendered}\n{summary}\n</div>'
 
 
 def _render_timeline_block(content: str) -> str:
     """Render a timeline/milestones block."""
-    return f'<div class="sow-timeline">\n<h3>Project Timeline</h3>\n{content}\n</div>'
+    rendered = _render_inner_markdown(content)
+    gantt = _build_timeline_gantt(content)
+    return f'<div class="sow-timeline">\n<h3>Project Timeline</h3>\n{rendered}\n{gantt}\n</div>'
 
 
 def _render_signature_block(content: str) -> str:
@@ -86,17 +223,6 @@ def _build_sig_block(lines: list) -> str:
             html += f'  <p>{line}</p>\n'
     html += '</div>\n'
     return html
-
-
-def _create_container_renderer(block_type: str):
-    """Create a render function for custom container blocks."""
-    def render(self, tokens, idx, options, env):
-        if tokens[idx].nesting == 1:
-            return f'<!-- {block_type}_start -->'
-        else:
-            return f'<!-- {block_type}_end -->'
-
-    return render
 
 
 def render_markdown(text: str, variables: dict = None) -> str:
@@ -145,11 +271,7 @@ def _process_custom_blocks(text: str) -> str:
         matches = re.finditer(pattern, text, flags=re.DOTALL)
         for match in matches:
             content = match.group(1)
-            # Parse the inner content as markdown first
-            inner_md = MarkdownIt('commonmark', {'html': True})
-            inner_md.enable('table')
-            inner_html = inner_md.render(content)
-            rendered = renderer(inner_html)
+            rendered = renderer(content)
             text = text.replace(match.group(0), rendered)
 
     return text
