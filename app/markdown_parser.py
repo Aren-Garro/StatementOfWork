@@ -128,62 +128,73 @@ def _build_pricing_summary(content: str) -> str:
     return html
 
 
-def _build_timeline_gantt(content: str) -> str:
-    rows = []
-    lines = content.replace('\r\n', '\n').split('\n')
+def _parse_timeline_entry(entry: str) -> dict | None:
+    range_match = re.search(
+        r'(?:week|wk)?\s*(\d+)\s*-\s*(\d+)\s*:\s*(.+)$',
+        entry,
+        flags=re.IGNORECASE,
+    )
+    if range_match:
+        return {
+            'start': int(range_match.group(1)),
+            'end': int(range_match.group(2)),
+            'label': range_match.group(3).strip(),
+        }
 
-    for raw_line in lines:
+    point_match = re.search(r'(?:week|wk)?\s*(\d+)\s*:\s*(.+)$', entry, flags=re.IGNORECASE)
+    if point_match:
+        point = int(point_match.group(1))
+        return {
+            'start': point,
+            'end': point,
+            'label': point_match.group(2).strip(),
+        }
+    return None
+
+
+def _parse_timeline_rows(content: str) -> list[dict]:
+    rows = []
+    for raw_line in content.replace('\r\n', '\n').split('\n'):
         line = raw_line.strip()
         if not re.match(r'^[-*]\s+', line):
             continue
         entry = re.sub(r'^[-*]\s+', '', line)
+        parsed = _parse_timeline_entry(entry)
+        if parsed:
+            rows.append(parsed)
+    return rows
 
-        range_match = re.search(
-            r'(?:week|wk)?\s*(\d+)\s*-\s*(\d+)\s*:\s*(.+)$',
-            entry,
-            flags=re.IGNORECASE,
-        )
-        if range_match:
-            rows.append(
-                {
-                    'start': int(range_match.group(1)),
-                    'end': int(range_match.group(2)),
-                    'label': range_match.group(3).strip(),
-                }
-            )
-            continue
 
-        point_match = re.search(r'(?:week|wk)?\s*(\d+)\s*:\s*(.+)$', entry, flags=re.IGNORECASE)
-        if point_match:
-            point = int(point_match.group(1))
-            rows.append(
-                {
-                    'start': point,
-                    'end': point,
-                    'label': point_match.group(2).strip(),
-                }
-            )
+def _timeline_span(rows: list[dict]) -> tuple[int, int]:
+    min_start = min(row['start'] for row in rows)
+    max_end = max(row['end'] for row in rows)
+    return min_start, max(1, (max_end - min_start + 1))
 
+
+def _render_gantt_row(row: dict, min_start: int, span: int) -> str:
+    offset = ((row['start'] - min_start) / span) * 100
+    width = (((row['end'] - row['start'] + 1) / span) * 100)
+    return (
+        '<div class="gantt-row">'
+        f'<div class="gantt-label">{escape(row["label"])} '
+        f'<span class="muted">(W{row["start"]}-W{row["end"]})</span></div>'
+        '<div class="gantt-track">'
+        f'<div class="gantt-bar" style="margin-left:{offset:.2f}%;width:{width:.2f}%;"></div>'
+        '</div>'
+        '</div>'
+    )
+
+
+def _build_timeline_gantt(content: str) -> str:
+    rows = _parse_timeline_rows(content)
     if not rows:
         return ''
 
-    min_start = min(row['start'] for row in rows)
-    max_end = max(row['end'] for row in rows)
-    span = max(1, (max_end - min_start + 1))
+    min_start, span = _timeline_span(rows)
 
     html = '<div class="sow-gantt"><h4>Gantt View</h4>'
     for row in rows:
-        offset = ((row['start'] - min_start) / span) * 100
-        width = (((row['end'] - row['start'] + 1) / span) * 100)
-        html += (
-            '<div class="gantt-row">'
-            f'<div class="gantt-label">{escape(row["label"])} '
-            f'<span class="muted">(W{row["start"]}-W{row["end"]})</span></div>'
-            '<div class="gantt-track">'
-            f'<div class="gantt-bar" style="margin-left:{offset:.2f}%;width:{width:.2f}%;"></div>'
-            '</div>'
-            '</div>'
-        )
+        html += _render_gantt_row(row, min_start, span)
     html += '</div>'
     return html
 
