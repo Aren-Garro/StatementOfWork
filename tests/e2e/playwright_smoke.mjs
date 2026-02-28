@@ -106,3 +106,24 @@ test("template library apply-new-doc and full signing flow update status", async
   await expect(page.locator("#doc-status")).toContainText("signed");
   await expect(page.locator("#save-status")).toContainText("Signed revisions are locked");
 });
+
+test("pricing block renders subtotal discount tax and total summary", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5000/");
+
+  const pricingMarkdown = [
+    ":::pricing",
+    "| Item | Hours | Rate | Total |",
+    "|---|---:|---:|---:|",
+    "| Discovery | 2 | $100 | $200 |",
+    "| Build | 3 | $100 | $300 |",
+    "Discount: 10%",
+    "Tax: 8%",
+    ":::",
+  ].join("\n");
+  await page.fill("#markdown-editor", pricingMarkdown);
+
+  await expect(page.locator("#preview-content")).toContainText("Subtotal:");
+  await expect(page.locator("#preview-content")).toContainText("Discount (10%)");
+  await expect(page.locator("#preview-content")).toContainText("Tax (8%)");
+  await expect(page.locator("#preview-content")).toContainText("Total:");
+});

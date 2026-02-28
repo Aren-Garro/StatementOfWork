@@ -278,6 +278,69 @@ Date: {{date}}
         return { html: html, nextIndex: i };
     }
 
+    function parseMoney(value) {
+        const cleaned = String(value || '').replace(/[^0-9.\-]/g, '');
+        const amount = Number(cleaned);
+        return Number.isFinite(amount) ? amount : null;
+    }
+
+    function formatMoney(amount) {
+        return '$' + amount.toFixed(2);
+    }
+
+    function buildPricingSummary(pricingBody) {
+        const lines = (pricingBody || '').replace(/\r\n/g, '\n').split('\n');
+        const metric = { subtotal: 0, discountPct: 0, taxPct: 0 };
+
+        lines.forEach((line) => {
+            const trimmed = line.trim();
+            if (/^discount\s*:/i.test(trimmed)) {
+                const match = trimmed.match(/(-?\d+(\.\d+)?)\s*%?/);
+                if (match) {
+                    metric.discountPct = Number(match[1]);
+                }
+                return;
+            }
+            if (/^tax\s*:/i.test(trimmed)) {
+                const match = trimmed.match(/(-?\d+(\.\d+)?)\s*%?/);
+                if (match) {
+                    metric.taxPct = Number(match[1]);
+                }
+                return;
+            }
+
+            if (!trimmed.includes('|') || /^\s*\|?[-:|\s]+\|?\s*$/.test(trimmed)) {
+                return;
+            }
+            const cells = trimmed.split('|').map((s) => s.trim()).filter(Boolean);
+            if (cells.length < 2) {
+                return;
+            }
+            const maybeAmount = parseMoney(cells[cells.length - 1]);
+            if (maybeAmount === null) {
+                return;
+            }
+            if ((cells[0] || '').toLowerCase().includes('total')) {
+                return;
+            }
+            metric.subtotal += maybeAmount;
+        });
+
+        const discountAmount = metric.subtotal * (metric.discountPct / 100);
+        const discounted = metric.subtotal - discountAmount;
+        const taxAmount = discounted * (metric.taxPct / 100);
+        const grandTotal = discounted + taxAmount;
+
+        return {
+            subtotal: metric.subtotal,
+            discountPct: metric.discountPct,
+            discountAmount: discountAmount,
+            taxPct: metric.taxPct,
+            taxAmount: taxAmount,
+            grandTotal: grandTotal,
+        };
+    }
+
     function parseMarkdown(md) {
         const lines = (md || '').replace(/\r\n/g, '\n').split('\n');
         let i = 0;
@@ -385,7 +448,18 @@ Date: {{date}}
     function applyCustomBlocks(md) {
         let out = md;
         out = out.replace(/:::pricing\s*\n([\s\S]*?)\n:::/g, function (_, body) {
-            return '\n<div class="sow-pricing">' + parseMarkdown(body) + '</div>\n';
+            const summary = buildPricingSummary(body);
+            let summaryHtml =
+                '<div class="pricing-summary">' +
+                '<div><strong>Subtotal:</strong> ' + formatMoney(summary.subtotal) + '</div>';
+            if (summary.discountPct !== 0) {
+                summaryHtml += '<div><strong>Discount (' + summary.discountPct + '%):</strong> -' + formatMoney(summary.discountAmount) + '</div>';
+            }
+            if (summary.taxPct !== 0) {
+                summaryHtml += '<div><strong>Tax (' + summary.taxPct + '%):</strong> ' + formatMoney(summary.taxAmount) + '</div>';
+            }
+            summaryHtml += '<div class="pricing-grand-total"><strong>Total:</strong> ' + formatMoney(summary.grandTotal) + '</div></div>';
+            return '\n<div class="sow-pricing">' + parseMarkdown(body) + summaryHtml + '</div>\n';
         });
         out = out.replace(/:::timeline\s*\n([\s\S]*?)\n:::/g, function (_, body) {
             return '\n<div class="sow-timeline"><h3>Project Timeline</h3>' + parseMarkdown(body) + '</div>\n';

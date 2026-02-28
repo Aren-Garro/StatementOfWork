@@ -239,7 +239,7 @@ Deploy on your own server or cloud platform:
 - [x] Additional jurisdiction packs (EU, UK, Canada, Australia)
 - [x] Enhanced template gallery with industry-specific examples
 - [ ] Multi-language support for international consultants
-- [ ] Advanced pricing table calculations (discounts, taxes)
+- [x] Advanced pricing table calculations (discounts, taxes)
 - [ ] Gantt chart integration for timeline visualization
 - [ ] Custom clause library builder UI
 - [ ] Email integration for direct client delivery
