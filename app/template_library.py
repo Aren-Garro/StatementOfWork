@@ -38,24 +38,35 @@ def filter_library_items(
 
     filtered: list[dict[str, Any]] = []
     for item in items:
-        item_industry = str(item.get("industry", "")).lower()
-        if wanted_industry and item_industry != wanted_industry:
+        if not _matches_industry(item, wanted_industry):
             continue
-
-        if q:
-            tags = item.get("tags", [])
-            if not isinstance(tags, list):
-                tags = []
-            haystack = " ".join(
-                [
-                    str(item.get("name", "")),
-                    str(item.get("description", "")),
-                    str(item.get("industry", "")),
-                    " ".join(str(tag) for tag in tags),
-                ]
-            ).lower()
-            if q not in haystack:
-                continue
+        if q and q not in _search_haystack(item):
+            continue
 
         filtered.append(item)
     return filtered
+
+
+def _matches_industry(item: dict[str, Any], wanted_industry: str) -> bool:
+    if not wanted_industry:
+        return True
+    item_industry = str(item.get("industry", "")).lower()
+    return item_industry == wanted_industry
+
+
+def _normalized_tags(item: dict[str, Any]) -> list[str]:
+    tags = item.get("tags", [])
+    if not isinstance(tags, list):
+        return []
+    return [str(tag) for tag in tags]
+
+
+def _search_haystack(item: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(item.get("name", "")),
+            str(item.get("description", "")),
+            str(item.get("industry", "")),
+            " ".join(_normalized_tags(item)),
+        ]
+    ).lower()
