@@ -185,6 +185,56 @@
         </div>
     </div>
 
+    <div id="setup-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+        <div class="modal-content">
+            <h2 id="setup-title">First-Run Setup</h2>
+            <p class="muted">Configure sharing and email delivery. You can update this any time from the Sharing button.</p>
+
+            <div class="setup-grid">
+                <section>
+                    <h3>Sharing Plugin</h3>
+                    <label>Plugin Base URL
+                        <input id="setup-plugin-url" type="text" placeholder="http://localhost:5000/plugin">
+                    </label>
+                    <label class="checkbox-row">
+                        <input id="setup-check-plugin-health" type="checkbox" checked>
+                        <span>Check plugin health now</span>
+                    </label>
+                </section>
+
+                <section>
+                    <h3>SMTP Email</h3>
+                    <label>SMTP Host<input id="setup-smtp-host" type="text" placeholder="smtp.example.com"></label>
+                    <label>SMTP Port<input id="setup-smtp-port" type="number" min="1" step="1" value="587"></label>
+                    <label>SMTP Username<input id="setup-smtp-username" type="text" placeholder="Optional"></label>
+                    <label>SMTP Password<input id="setup-smtp-password" type="password" placeholder="Optional"></label>
+                    <label>From Email<input id="setup-smtp-from-email" type="email" placeholder="noreply@example.com"></label>
+                    <label>From Name<input id="setup-smtp-from-name" type="text" value="SOW Creator"></label>
+                    <label>Timeout Seconds<input id="setup-smtp-timeout" type="number" min="1" step="1" value="10"></label>
+                    <label class="checkbox-row">
+                        <input id="setup-smtp-starttls" type="checkbox" checked>
+                        <span>Use STARTTLS</span>
+                    </label>
+                    <label class="checkbox-row">
+                        <input id="setup-smtp-ssl" type="checkbox">
+                        <span>Use SSL</span>
+                    </label>
+                    <label class="checkbox-row">
+                        <input id="setup-check-smtp-connection" type="checkbox">
+                        <span>Test SMTP connection now</span>
+                    </label>
+                </section>
+            </div>
+
+            <div id="setup-status" class="setup-status muted">Not checked yet.</div>
+            <div class="modal-actions">
+                <button id="btn-setup-check" class="btn">Check Setup</button>
+                <button id="btn-setup-save" class="btn btn-primary">Save Setup</button>
+                <button id="btn-setup-skip" class="btn">Skip For Now</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/editor_utils.js"></script>
     <script src="/static/js/editor_revision_utils.js"></script>
     <script src="/static/js/editor.js"></script>

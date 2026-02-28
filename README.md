@@ -78,10 +78,18 @@ python -m venv .venv
 . .venv/Scripts/activate  # On Windows
 # source .venv/bin/activate  # On macOS/Linux
 pip install -r requirements.txt
+python scripts/bootstrap_desktop.py
+```
+
+If `pywebview` is installed, this opens a desktop window. Otherwise it opens your browser automatically.
+
+Fallback web mode:
+
+```bash
 python run.py
 ```
 
-Open `http://localhost:5000` and start creating professional SOWs immediately.
+Then open `http://localhost:5000`.
 
 ## Core Architecture
 

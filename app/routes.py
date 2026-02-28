@@ -3,8 +3,12 @@ import io
 import json
 import os
 import re
+import smtplib
+import socket
 from datetime import datetime, timezone
 from collections import defaultdict, deque
+from urllib import request as urllib_request
+from urllib.error import URLError, HTTPError
 
 from flask import (
     Blueprint,
@@ -48,6 +52,10 @@ _ALLOWED_JURISDICTIONS = {
     'UK_BASE',
     'CA_BASE',
     'AU_BASE',
+}
+_RUNTIME_SETUP = {
+    'sharing_plugin_url': '',
+    'smtp': {},
 }
 
 
@@ -287,6 +295,108 @@ def _create_published_or_error(payload: dict):
     )
 
 
+def _module_available(module_name: str) -> bool:
+    try:
+        __import__(module_name)
+        return True
+    except ModuleNotFoundError:
+        return False
+
+
+def _default_plugin_url() -> str:
+    return f"{request.host_url.rstrip('/')}/plugin"
+
+
+def _normalize_setup_smtp(raw: dict | None) -> dict:
+    smtp = raw if isinstance(raw, dict) else {}
+    return {
+        'host': _normalized_text(smtp.get('host')),
+        'port': _parse_int(smtp.get('port', 587), 587),
+        'username': _normalized_text(smtp.get('username')),
+        'password': _normalized_text(smtp.get('password')),
+        'from_email': _normalized_text(smtp.get('from_email')),
+        'from_name': _normalized_text(smtp.get('from_name'), 'SOW Creator'),
+        'use_starttls': _parse_bool(smtp.get('use_starttls'), True),
+        'use_ssl': _parse_bool(smtp.get('use_ssl'), False),
+        'timeout_seconds': _parse_int(smtp.get('timeout_seconds', 10), 10),
+    }
+
+
+def _validate_setup_smtp(smtp: dict) -> list[str]:
+    issues = []
+    if not smtp['host']:
+        issues.append('SMTP host is required')
+    if not smtp['from_email']:
+        issues.append('SMTP from_email is required')
+    if smtp['use_ssl'] and smtp['use_starttls']:
+        issues.append('SMTP cannot enable both SSL and STARTTLS')
+    if smtp['port'] <= 0:
+        issues.append('SMTP port must be a positive integer')
+    if smtp['timeout_seconds'] <= 0:
+        issues.append('SMTP timeout_seconds must be a positive integer')
+    return issues
+
+
+def _check_smtp_connection(smtp: dict) -> tuple[bool, str]:
+    try:
+        if smtp['use_ssl']:
+            server = smtplib.SMTP_SSL(
+                smtp['host'],
+                smtp['port'],
+                timeout=smtp['timeout_seconds'],
+            )
+        else:
+            server = smtplib.SMTP(
+                smtp['host'],
+                smtp['port'],
+                timeout=smtp['timeout_seconds'],
+            )
+        with server:
+            if smtp['use_starttls'] and not smtp['use_ssl']:
+                server.starttls()
+            if smtp['username']:
+                server.login(smtp['username'], smtp['password'])
+        return True, 'SMTP connection OK'
+    except (smtplib.SMTPException, OSError, socket.error) as exc:
+        return False, str(exc)
+
+
+def _check_plugin_health(plugin_url: str) -> tuple[bool, str]:
+    target = f"{plugin_url.rstrip('/')}/v1/health/check"
+    req = urllib_request.Request(
+        target,
+        data=b'{}',
+        headers={'Content-Type': 'application/json'},
+        method='POST',
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=5) as resp:
+            if 200 <= resp.status < 300:
+                return True, 'Plugin health check OK'
+            return False, f'Plugin returned status {resp.status}'
+    except HTTPError as exc:
+        return False, f'Plugin returned status {exc.code}'
+    except URLError as exc:
+        return False, str(exc.reason)
+    except Exception as exc:  # pragma: no cover - defensive
+        return False, str(exc)
+
+
+def _apply_runtime_setup(plugin_url: str, smtp: dict) -> None:
+    _RUNTIME_SETUP['sharing_plugin_url'] = plugin_url
+    _RUNTIME_SETUP['smtp'] = dict(smtp)
+
+    os.environ['SMTP_HOST'] = smtp['host']
+    os.environ['SMTP_PORT'] = str(smtp['port'])
+    os.environ['SMTP_USERNAME'] = smtp['username']
+    os.environ['SMTP_PASSWORD'] = smtp['password']
+    os.environ['SMTP_FROM_EMAIL'] = smtp['from_email']
+    os.environ['SMTP_FROM_NAME'] = smtp['from_name']
+    os.environ['SMTP_USE_STARTTLS'] = 'true' if smtp['use_starttls'] else 'false'
+    os.environ['SMTP_USE_SSL'] = 'true' if smtp['use_ssl'] else 'false'
+    os.environ['SMTP_TIMEOUT_SECONDS'] = str(smtp['timeout_seconds'])
+
+
 def _validate_template_create_payload(data: dict) -> str | None:
     """Return validation error text for template create payloads."""
     name = data.get('name')
@@ -485,6 +595,105 @@ def delete_template(template_id):
     if not success:
         return jsonify({'error': 'Template not found'}), 404
     return jsonify({'message': 'Deleted'})
+
+
+@api_bp.route('/setup/status', methods=['GET'])
+def setup_status():
+    """Return current startup/setup status for first-run onboarding."""
+    default_plugin_url = _default_plugin_url()
+    configured_plugin_url = (
+        _RUNTIME_SETUP.get('sharing_plugin_url')
+        or (os.environ.get('SHARING_PLUGIN_URL') or '').strip()
+    )
+    smtp_from_env = {
+        'host': (os.environ.get('SMTP_HOST') or '').strip(),
+        'from_email': (os.environ.get('SMTP_FROM_EMAIL') or '').strip(),
+    }
+    smtp_configured = bool(smtp_from_env['host'] and smtp_from_env['from_email'])
+    deps = {
+        'weasyprint': _module_available('weasyprint'),
+        'gunicorn': _module_available('gunicorn'),
+    }
+    return jsonify(
+        {
+            'setup_completed': bool(configured_plugin_url and smtp_configured),
+            'sharing': {
+                'default_plugin_url': default_plugin_url,
+                'configured_plugin_url': configured_plugin_url,
+                'configured': bool(configured_plugin_url),
+            },
+            'smtp': {
+                'configured': smtp_configured,
+                'host': smtp_from_env['host'],
+                'from_email': smtp_from_env['from_email'],
+            },
+            'dependencies': deps,
+        }
+    )
+
+
+@api_bp.route('/setup/check', methods=['POST'])
+def setup_check():
+    """Validate plugin and SMTP setup details without persisting."""
+    data = _read_json_object()
+    if data is None:
+        return jsonify({'error': 'JSON object body is required'}), 400
+
+    plugin_url = _normalized_text(data.get('sharing_plugin_url'), _default_plugin_url())
+    smtp = _normalize_setup_smtp(data.get('smtp'))
+    check_smtp_connection = _parse_bool(data.get('check_smtp_connection'), False)
+    check_plugin_health = _parse_bool(data.get('check_plugin_health'), True)
+
+    smtp_issues = _validate_setup_smtp(smtp)
+    smtp_ok = len(smtp_issues) == 0
+    smtp_connection = {'ok': None, 'message': 'Skipped'}
+    if smtp_ok and check_smtp_connection:
+        ok, message = _check_smtp_connection(smtp)
+        smtp_connection = {'ok': ok, 'message': message}
+
+    plugin_health = {'ok': None, 'message': 'Skipped'}
+    if plugin_url and check_plugin_health:
+        ok, message = _check_plugin_health(plugin_url)
+        plugin_health = {'ok': ok, 'message': message}
+
+    return jsonify(
+        {
+            'sharing_plugin_url': plugin_url,
+            'smtp': {
+                'issues': smtp_issues,
+                'valid': smtp_ok,
+                'connection': smtp_connection,
+            },
+            'plugin': {
+                'health': plugin_health,
+            },
+            'ready_to_save': smtp_ok and (plugin_health['ok'] is not False),
+        }
+    )
+
+
+@api_bp.route('/setup/save', methods=['POST'])
+def setup_save():
+    """Persist setup configuration for current app runtime."""
+    data = _read_json_object()
+    if data is None:
+        return jsonify({'error': 'JSON object body is required'}), 400
+
+    plugin_url = _normalized_text(data.get('sharing_plugin_url'), _default_plugin_url())
+    smtp = _normalize_setup_smtp(data.get('smtp'))
+    smtp_issues = _validate_setup_smtp(smtp)
+    if smtp_issues:
+        return jsonify({'error': '; '.join(smtp_issues)}), 400
+
+    _apply_runtime_setup(plugin_url, smtp)
+    return jsonify(
+        {
+            'status': 'ok',
+            'sharing_plugin_url': plugin_url,
+            'smtp_configured': True,
+            'setup_completed': True,
+        }
+    )
 
 
 # Optional sharing plugin endpoints

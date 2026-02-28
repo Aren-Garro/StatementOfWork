@@ -539,6 +539,62 @@ textarea {
     flex: 1;
 }
 
+.setup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+    margin-top: 0.6rem;
+}
+
+.setup-grid section {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.6rem;
+    background: #fbfcfe;
+}
+
+.setup-grid h3 {
+    margin: 0 0 0.5rem;
+    font-size: 0.9rem;
+}
+
+.setup-grid label {
+    display: block;
+    font-size: 0.82rem;
+    margin-bottom: 0.4rem;
+}
+
+.setup-grid input[type='text'],
+.setup-grid input[type='email'],
+.setup-grid input[type='password'],
+.setup-grid input[type='number'] {
+    width: 100%;
+    margin-top: 0.2rem;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+}
+
+.checkbox-row {
+    display: flex !important;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.checkbox-row input {
+    width: auto !important;
+    margin: 0;
+}
+
+.setup-status {
+    margin-top: 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #f8fafc;
+    padding: 0.5rem;
+    white-space: pre-line;
+}
+
 @media (max-width: 1250px) {
     .editor-layout {
         grid-template-columns: 1fr;
@@ -558,6 +614,10 @@ textarea {
 @media (max-width: 720px) {
     .modal-content {
         padding: 0.65rem;
+    }
+
+    .setup-grid {
+        grid-template-columns: 1fr;
     }
 
     #signature-canvas {

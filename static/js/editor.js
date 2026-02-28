@@ -375,6 +375,10 @@ Date: {{date}}
         previewFetchController: null,
         previewRequestSeq: 0,
         previewTimer: null,
+        setup: {
+            statusLoaded: false,
+            completed: false,
+        },
     };
 
     const el = {
@@ -433,6 +437,23 @@ Date: {{date}}
         btnSignatureClear: document.getElementById('btn-signature-clear'),
         btnSignatureCancel: document.getElementById('btn-signature-cancel'),
         btnSignatureAccept: document.getElementById('btn-signature-accept'),
+        setupModal: document.getElementById('setup-modal'),
+        setupStatus: document.getElementById('setup-status'),
+        setupPluginUrl: document.getElementById('setup-plugin-url'),
+        setupCheckPluginHealth: document.getElementById('setup-check-plugin-health'),
+        setupSmtpHost: document.getElementById('setup-smtp-host'),
+        setupSmtpPort: document.getElementById('setup-smtp-port'),
+        setupSmtpUsername: document.getElementById('setup-smtp-username'),
+        setupSmtpPassword: document.getElementById('setup-smtp-password'),
+        setupSmtpFromEmail: document.getElementById('setup-smtp-from-email'),
+        setupSmtpFromName: document.getElementById('setup-smtp-from-name'),
+        setupSmtpTimeout: document.getElementById('setup-smtp-timeout'),
+        setupSmtpStarttls: document.getElementById('setup-smtp-starttls'),
+        setupSmtpSsl: document.getElementById('setup-smtp-ssl'),
+        setupCheckSmtpConnection: document.getElementById('setup-check-smtp-connection'),
+        btnSetupCheck: document.getElementById('btn-setup-check'),
+        btnSetupSave: document.getElementById('btn-setup-save'),
+        btnSetupSkip: document.getElementById('btn-setup-skip'),
         varInputs: document.querySelectorAll('[data-var]'),
         snippetButtons: document.querySelectorAll('[data-snippet]'),
     };
@@ -2322,9 +2343,14 @@ ${el.preview.innerHTML}
     }
 
     async function publishDocument() {
-        const baseUrl = localStorage.getItem('sharing_plugin_url');
+        let baseUrl = (localStorage.getItem('sharing_plugin_url') || '').trim();
         if (!baseUrl) {
-            alert('Set sharing plugin URL first.');
+            baseUrl = buildDefaultPluginUrl();
+            localStorage.setItem('sharing_plugin_url', baseUrl);
+            syncSharingState();
+        }
+        if (!baseUrl) {
+            alert('Run setup first to configure sharing.');
             return;
         }
 
@@ -2411,35 +2437,149 @@ ${el.preview.innerHTML}
         alert('Email sent to ' + payload.to_email + (payload.attached_pdf ? ' with PDF attachment.' : '.'));
     }
 
-    function configureSharing() {
-        const current = localStorage.getItem('sharing_plugin_url') || '';
-        const value = prompt('Sharing plugin base URL (example: http://localhost:5000/plugin):', current);
-        if (value === null) {
+    function buildDefaultPluginUrl() {
+        return window.location.origin.replace(/\/$/, '') + '/plugin';
+    }
+
+    function collectSetupPayload() {
+        return {
+            sharing_plugin_url: (el.setupPluginUrl.value || '').trim() || buildDefaultPluginUrl(),
+            check_plugin_health: Boolean(el.setupCheckPluginHealth.checked),
+            check_smtp_connection: Boolean(el.setupCheckSmtpConnection.checked),
+            smtp: {
+                host: (el.setupSmtpHost.value || '').trim(),
+                port: Number(el.setupSmtpPort.value || 587),
+                username: (el.setupSmtpUsername.value || '').trim(),
+                password: (el.setupSmtpPassword.value || '').trim(),
+                from_email: (el.setupSmtpFromEmail.value || '').trim(),
+                from_name: (el.setupSmtpFromName.value || '').trim(),
+                timeout_seconds: Number(el.setupSmtpTimeout.value || 10),
+                use_starttls: Boolean(el.setupSmtpStarttls.checked),
+                use_ssl: Boolean(el.setupSmtpSsl.checked),
+            },
+        };
+    }
+
+    function renderSetupStatus(lines, isError) {
+        el.setupStatus.textContent = lines.join('\n');
+        el.setupStatus.style.borderColor = isError ? '#fca5a5' : '#86efac';
+        el.setupStatus.style.background = isError ? '#fef2f2' : '#f0fdf4';
+    }
+
+    async function loadSetupStatus() {
+        const response = await fetch('/api/setup/status');
+        if (!response.ok) {
+            throw new Error('Failed to load setup status');
+        }
+        const payload = await response.json();
+        state.setup.statusLoaded = true;
+        state.setup.completed = Boolean(payload.setup_completed);
+
+        const savedPlugin = (localStorage.getItem('sharing_plugin_url') || '').trim();
+        el.setupPluginUrl.value = savedPlugin || payload.sharing.configured_plugin_url || payload.sharing.default_plugin_url;
+        if (payload.smtp && payload.smtp.host && !el.setupSmtpHost.value) {
+            el.setupSmtpHost.value = payload.smtp.host;
+        }
+        if (payload.smtp && payload.smtp.from_email && !el.setupSmtpFromEmail.value) {
+            el.setupSmtpFromEmail.value = payload.smtp.from_email;
+        }
+
+        const depLines = [];
+        if (payload.dependencies && payload.dependencies.weasyprint === false) {
+            depLines.push('PDF export dependency missing: weasyprint');
+        }
+        if (payload.dependencies && payload.dependencies.gunicorn === false) {
+            depLines.push('Production server dependency missing: gunicorn');
+        }
+        if (depLines.length) {
+            renderSetupStatus(depLines, true);
+        } else {
+            renderSetupStatus(['Setup status loaded. Run "Check Setup" to validate connectivity.'], false);
+        }
+    }
+
+    async function runSetupCheck() {
+        const payload = collectSetupPayload();
+        const response = await fetch('/api/setup/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            renderSetupStatus([result.error || 'Setup check failed'], true);
+            return false;
+        }
+
+        const lines = [];
+        let hasError = false;
+        if (result.plugin && result.plugin.health) {
+            const health = result.plugin.health;
+            if (health.ok === false) {
+                hasError = true;
+                lines.push('Plugin health check failed: ' + health.message);
+            } else if (health.ok === true) {
+                lines.push('Plugin health check: OK');
+            } else {
+                lines.push('Plugin health check: skipped');
+            }
+        }
+        if (result.smtp) {
+            if (Array.isArray(result.smtp.issues) && result.smtp.issues.length) {
+                hasError = true;
+                lines.push('SMTP issues: ' + result.smtp.issues.join('; '));
+            } else {
+                lines.push('SMTP settings: valid');
+            }
+            if (result.smtp.connection && result.smtp.connection.ok === false) {
+                hasError = true;
+                lines.push('SMTP connection failed: ' + result.smtp.connection.message);
+            } else if (result.smtp.connection && result.smtp.connection.ok === true) {
+                lines.push('SMTP connection: OK');
+            }
+        }
+        lines.push(result.ready_to_save ? 'Ready to save setup.' : 'Resolve issues before saving setup.');
+        renderSetupStatus(lines, hasError);
+        return !hasError;
+    }
+
+    async function saveSetup() {
+        const payload = collectSetupPayload();
+        const response = await fetch('/api/setup/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            renderSetupStatus([result.error || 'Setup save failed'], true);
+            return false;
+        }
+
+        localStorage.setItem('sharing_plugin_url', payload.sharing_plugin_url);
+        localStorage.setItem('setup_completed', 'true');
+        state.setup.completed = true;
+        syncSharingState();
+        renderSetupStatus(['Setup saved successfully. Sharing and email are ready.'], false);
+        setSaveStatus('Setup saved');
+        return true;
+    }
+
+    function openSetupModal(force) {
+        if (!force && state.setup.completed) {
             return;
         }
+        el.setupModal.classList.remove('hidden');
+    }
 
-        const normalized = value.trim();
-        localStorage.setItem('sharing_plugin_url', normalized);
-        syncSharingState();
-
-        if (normalized) {
-            fetch(normalized.replace(/\/$/, '') + '/v1/health/check', { method: 'POST' })
-                .then((res) => {
-                    if (!res.ok) {
-                        throw new Error('health check failed');
-                    }
-                    setSaveStatus('Sharing plugin configured');
-                })
-                .catch(() => {
-                    setSaveStatus('Sharing plugin configured (health check failed)');
-                });
-        }
+    function closeSetupModal() {
+        el.setupModal.classList.add('hidden');
     }
 
     function syncSharingState() {
         const configured = Boolean((localStorage.getItem('sharing_plugin_url') || '').trim());
         el.btnPublish.disabled = !configured;
-        el.btnPublish.title = configured ? 'Publish read-only link' : 'Configure sharing plugin URL first';
+        el.btnPublish.title = configured ? 'Publish read-only link' : 'Run setup to configure sharing first';
     }
 
     function setupEvents() {
@@ -2583,11 +2723,42 @@ ${el.preview.innerHTML}
             });
         });
 
-        el.btnSettings.addEventListener('click', configureSharing);
+        el.btnSettings.addEventListener('click', function () {
+            openSetupModal(true);
+        });
+        el.btnSetupCheck.addEventListener('click', function () {
+            runSetupCheck().catch(function (err) {
+                console.error(err);
+                renderSetupStatus(['Setup check failed unexpectedly.'], true);
+            });
+        });
+        el.btnSetupSave.addEventListener('click', function () {
+            saveSetup().then(function (ok) {
+                if (ok) {
+                    closeSetupModal();
+                }
+            }).catch(function (err) {
+                console.error(err);
+                renderSetupStatus(['Setup save failed unexpectedly.'], true);
+            });
+        });
+        el.btnSetupSkip.addEventListener('click', function () {
+            closeSetupModal();
+            setSaveStatus('Setup skipped. You can configure Sharing later.');
+        });
+        el.setupModal.addEventListener('click', function (event) {
+            if (event.target === el.setupModal) {
+                closeSetupModal();
+            }
+        });
 
         document.addEventListener('keydown', function (event) {
             if (event.key === 'Escape' && !el.signatureModal.classList.contains('hidden')) {
                 closeSignatureModal();
+                return;
+            }
+            if (event.key === 'Escape' && !el.setupModal.classList.contains('hidden')) {
+                closeSetupModal();
                 return;
             }
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -2620,6 +2791,16 @@ ${el.preview.innerHTML}
         renderDocList();
         setupEvents();
         syncSharingState();
+        try {
+            await loadSetupStatus();
+        } catch (err) {
+            console.error(err);
+            renderSetupStatus(['Unable to load setup status. You can still configure manually.'], true);
+        }
+        const setupDone = (localStorage.getItem('setup_completed') || '').trim().toLowerCase() === 'true';
+        if (!setupDone) {
+            openSetupModal(true);
+        }
         await loadLibraryTemplates();
         resizeSignatureCanvas();
         resetSignatureCanvas();
