@@ -6,6 +6,18 @@
  */
 import { test, expect } from "@playwright/test";
 
+async function drawSignature(page) {
+  const canvas = page.locator("#signature-canvas");
+  const box = await canvas.boundingBox();
+  if (!box) {
+    throw new Error("signature canvas not visible");
+  }
+  await page.mouse.move(box.x + 20, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 140, box.y + 90, { steps: 8 });
+  await page.mouse.up();
+}
+
 test("local-first signing and export controls render", async ({ page }) => {
   await page.goto("http://127.0.0.1:5000/");
 
@@ -59,17 +71,35 @@ test("compare view renders and signature capture can be accepted", async ({ page
 
   await page.getByRole("button", { name: "Sign as Consultant" }).click();
   await page.fill("#signature-name", "Playwright Consultant");
-  const canvas = page.locator("#signature-canvas");
-  const box = await canvas.boundingBox();
-  if (!box) {
-    throw new Error("signature canvas not visible");
-  }
-  await page.mouse.move(box.x + 20, box.y + 30);
-  await page.mouse.down();
-  await page.mouse.move(box.x + 140, box.y + 90, { steps: 8 });
-  await page.mouse.up();
+  await drawSignature(page);
   await page.getByRole("button", { name: "Accept Signature" }).click();
 
   await expect(page.locator("#signature-modal")).toBeHidden();
   await expect(page.locator("#preview-content")).toContainText("Playwright Consultant");
+});
+
+test("template library apply-new-doc and full signing flow update status", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5000/");
+
+  const initialDocCount = await page.locator("#doc-list button").count();
+  const firstCard = page.locator("#library-list .library-item").first();
+  await expect(firstCard).toBeVisible();
+  const firstTitle = (await firstCard.locator("h3").textContent())?.trim() || "Untitled SOW";
+  await firstCard.getByRole("button", { name: "Apply New Doc" }).click();
+
+  await expect(page.locator("#doc-name")).toContainText(firstTitle);
+  await expect(page.locator("#doc-list button")).toHaveCount(initialDocCount + 1);
+
+  await page.getByRole("button", { name: "Sign as Consultant" }).click();
+  await page.fill("#signature-name", "Consultant Smoke");
+  await drawSignature(page);
+  await page.getByRole("button", { name: "Accept Signature" }).click();
+
+  await page.getByRole("button", { name: "Sign as Client" }).click();
+  await page.fill("#signature-name", "Client Smoke");
+  await drawSignature(page);
+  await page.getByRole("button", { name: "Accept Signature" }).click();
+
+  await expect(page.locator("#doc-status")).toContainText("signed");
+  await expect(page.locator("#save-status")).toContainText("Signed revisions are locked");
 });

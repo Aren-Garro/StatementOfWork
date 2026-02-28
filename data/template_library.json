@@ -5,6 +5,7 @@
       "name": "IT Consulting Baseline SOW",
       "description": "Discovery-to-delivery engagement template for independent IT consultants.",
       "industry": "IT",
+      "templateId": "modern",
       "tags": ["discovery", "delivery", "retainer"],
       "variables": {
         "client_name": "Client Name",
@@ -19,6 +20,7 @@
       "name": "Website Build SOW",
       "description": "Full website redesign and launch template with phased milestones.",
       "industry": "Marketing",
+      "templateId": "modern",
       "tags": ["website", "design", "launch"],
       "variables": {
         "client_name": "Client Name",
@@ -33,6 +35,7 @@
       "name": "SaaS MVP Delivery SOW",
       "description": "Template for shipping MVP scope with explicit non-goals and acceptance gates.",
       "industry": "SaaS",
+      "templateId": "minimal",
       "tags": ["mvp", "product", "engineering"],
       "variables": {
         "client_name": "Client Name",
@@ -47,6 +50,7 @@
       "name": "Operations Advisory SOW",
       "description": "Operational process improvement engagement for small teams.",
       "industry": "Operations",
+      "templateId": "classic",
       "tags": ["process", "kpi", "advisory"],
       "variables": {
         "client_name": "Client Name",

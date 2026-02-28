@@ -236,6 +236,7 @@ def template_library():
     curated = []
     for item in load_curated_templates():
         normalized = dict(item)
+        normalized['templateId'] = normalized.get('templateId', 'modern')
         normalized['source'] = 'curated'
         curated.append(normalized)
 
@@ -253,6 +254,7 @@ def template_library():
                 'variables': t.get('variables', {}),
                 'source': 'user',
                 'template_id': t.get('id'),
+                'templateId': t.get('pdf_template', 'modern'),
             }
         )
 
