@@ -87,3 +87,21 @@ def test_template_library_filters_and_paginates(monkeypatch):
     assert len(payload["templates"]) <= 1
     for item in payload["templates"]:
         assert item["industry"] == "Marketing"
+
+
+def test_template_library_clamps_invalid_limit_and_offset(monkeypatch):
+    client = _make_client(monkeypatch)
+    response = client.get("/api/templates/library?limit=9999&offset=-10")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["limit"] == 100
+    assert payload["offset"] == 0
+
+
+def test_template_library_empty_result_for_unknown_industry(monkeypatch):
+    client = _make_client(monkeypatch)
+    response = client.get("/api/templates/library?industry=UnknownIndustry")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["templates"] == []
+    assert payload["total"] == 0
