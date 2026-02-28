@@ -25,6 +25,27 @@ def _ensure_allowed(value: str, allowed_values: set[str], field_name: str) -> No
         raise ServiceError(f'invalid {field_name}', 400)
 
 
+def _validate_publish_flags(*, signed: bool, signed_only: bool, revision: int | None) -> None:
+    if signed_only and not signed:
+        raise ServiceError('signed_only publish requires signed=true', 400)
+    if revision is not None and revision < 1:
+        raise ServiceError('revision must be >= 1 when provided', 400)
+
+
+def _validate_publish_enums(
+    *,
+    jurisdiction: str,
+    template: str,
+    page_size: str,
+    allowed_jurisdictions: set[str],
+    allowed_templates: set[str],
+    allowed_page_sizes: set[str],
+) -> None:
+    _ensure_allowed(jurisdiction, allowed_jurisdictions, 'jurisdiction')
+    _ensure_allowed(template, allowed_templates, 'template')
+    _ensure_allowed(page_size, allowed_page_sizes, 'page_size')
+
+
 def _validate_publish_inputs(
     *,
     sanitized_html: str,
@@ -40,14 +61,15 @@ def _validate_publish_inputs(
 ) -> None:
     if not sanitized_html:
         raise ServiceError('html is required', 400)
-    if signed_only and not signed:
-        raise ServiceError('signed_only publish requires signed=true', 400)
-    if revision is not None and revision < 1:
-        raise ServiceError('revision must be >= 1 when provided', 400)
-
-    _ensure_allowed(jurisdiction, allowed_jurisdictions, 'jurisdiction')
-    _ensure_allowed(template, allowed_templates, 'template')
-    _ensure_allowed(page_size, allowed_page_sizes, 'page_size')
+    _validate_publish_flags(signed=signed, signed_only=signed_only, revision=revision)
+    _validate_publish_enums(
+        jurisdiction=jurisdiction,
+        template=template,
+        page_size=page_size,
+        allowed_jurisdictions=allowed_jurisdictions,
+        allowed_templates=allowed_templates,
+        allowed_page_sizes=allowed_page_sizes,
+    )
 
 
 def _bounded_expiry_days(expires_in_days: int) -> int:
