@@ -176,29 +176,36 @@ def _enforce_publish_captcha(client_ip: str):
     return None
 
 
+def _normalized_text(value, default: str = '', max_len: int | None = None) -> str:
+    text = (value or default).strip()
+    if max_len is not None:
+        return text[:max_len]
+    return text
+
+
 def _parse_publish_request(data: dict) -> dict:
     """Normalize publish payload for service input."""
-    raw_html = (data.get('html') or '').strip()
+    raw_html = _normalized_text(data.get('html'))
     return {
-        'title': (data.get('title') or 'Statement of Work').strip()[:200],
+        'title': _normalized_text(data.get('title'), 'Statement of Work', 200),
         'sanitized_html': _sanitize_html(raw_html),
         'expires_in_days': _parse_int(data.get('expires_in_days', 30), 30),
         'revision': _parse_int(data.get('revision'), None),
         'signed': _parse_bool(data.get('signed'), False),
         'signed_only': _parse_bool(data.get('signed_only'), False),
-        'template': (data.get('template') or 'modern').strip(),
-        'page_size': (data.get('page_size') or 'Letter').strip(),
-        'jurisdiction': (data.get('jurisdiction') or 'US_BASE').strip()[:32] or 'US_BASE',
+        'template': _normalized_text(data.get('template'), 'modern'),
+        'page_size': _normalized_text(data.get('page_size'), 'Letter'),
+        'jurisdiction': _normalized_text(data.get('jurisdiction'), 'US_BASE', 32) or 'US_BASE',
     }
 
 
 def _parse_publish_email_request(data: dict) -> dict:
     """Normalize plugin email payload."""
     return {
-        'to_email': (data.get('to_email') or '').strip(),
+        'to_email': _normalized_text(data.get('to_email')),
         'attach_pdf': _parse_bool(data.get('attach_pdf'), True),
-        'subject': (data.get('subject') or '').strip(),
-        'message': (data.get('message') or '').strip(),
+        'subject': _normalized_text(data.get('subject')),
+        'message': _normalized_text(data.get('message')),
     }
 
 
