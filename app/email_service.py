@@ -131,28 +131,34 @@ def _attach_pdf_if_requested(
         )
 
 
+def _open_smtp_server(settings: dict):
+    if settings["use_ssl"]:
+        return smtplib.SMTP_SSL(
+            settings["host"],
+            settings["port"],
+            timeout=settings["timeout_seconds"],
+        )
+    return smtplib.SMTP(
+        settings["host"],
+        settings["port"],
+        timeout=settings["timeout_seconds"],
+    )
+
+
+def _send_via_server(*, server, settings: dict, msg: EmailMessage) -> None:
+    if settings["use_starttls"] and not settings["use_ssl"]:
+        server.starttls()
+    if settings["username"]:
+        server.login(settings["username"], settings["password"])
+    server.send_message(msg)
+
+
 def _send_message(*, settings: dict, msg: EmailMessage) -> None:
     """Send an email via configured SMTP transport."""
-    if settings["use_ssl"]:
-        server = smtplib.SMTP_SSL(
-            settings["host"],
-            settings["port"],
-            timeout=settings["timeout_seconds"],
-        )
-    else:
-        server = smtplib.SMTP(
-            settings["host"],
-            settings["port"],
-            timeout=settings["timeout_seconds"],
-        )
-
+    server = _open_smtp_server(settings)
     try:
         with server:
-            if settings["use_starttls"] and not settings["use_ssl"]:
-                server.starttls()
-            if settings["username"]:
-                server.login(settings["username"], settings["password"])
-            server.send_message(msg)
+            _send_via_server(server=server, settings=settings, msg=msg)
     except Exception as exc:  # pragma: no cover - mapped behavior is tested
         raise EmailSendError(f"Failed to send email: {exc}") from exc
 
