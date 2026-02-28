@@ -105,3 +105,18 @@ def test_template_library_empty_result_for_unknown_industry(monkeypatch):
     payload = response.get_json()
     assert payload["templates"] == []
     assert payload["total"] == 0
+
+
+def test_template_library_query_matches_user_template(monkeypatch):
+    client = _make_client(monkeypatch)
+    created = client.post(
+        "/api/templates",
+        json={"name": "Acme Special SOW", "markdown": "# Acme", "variables": {}},
+    )
+    assert created.status_code == 201
+
+    response = client.get("/api/templates/library?q=acme%20special")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["total"] >= 1
+    assert any(item["source"] == "user" and "Acme Special SOW" in item["name"] for item in payload["templates"])

@@ -523,6 +523,12 @@ Date: {{date}}
             '</div>';
     }
 
+    function clearComparison() {
+        state.compare.baseRevision = null;
+        state.compare.targetRevision = null;
+        el.compareOutput.textContent = 'No comparison selected.';
+    }
+
     function refreshCompareSelectors() {
         if (!state.currentDoc) {
             return;
@@ -665,7 +671,7 @@ Date: {{date}}
                     revision: 1,
                     markdown: template.markdown,
                     variables: templateVariables,
-                    templateId: 'modern',
+                    templateId: template.templateId || 'modern',
                     pageSize: 'Letter',
                     status: 'draft',
                     signatures: [],
@@ -693,6 +699,7 @@ Date: {{date}}
             const key = input.dataset.var;
             input.value = templateVariables[key] || '';
         });
+        el.templateSelect.value = template.templateId || 'modern';
         setRevisionFromUi(revision);
         state.currentDoc.title = templateVariables.project_name || template.name || 'Untitled SOW';
         el.docName.textContent = state.currentDoc.title;
@@ -701,15 +708,41 @@ Date: {{date}}
         queueSave();
     }
 
-    function resetSignatureCanvas() {
+    function resizeSignatureCanvas() {
+        const canvas = el.signatureCanvas;
+        const ratio = Math.max(window.devicePixelRatio || 1, 1);
+        const bounds = canvas.getBoundingClientRect();
+        const width = Math.max(240, Math.floor(bounds.width * ratio));
+        const height = Math.max(120, Math.floor(bounds.height * ratio));
+        const existing = canvas.toDataURL('image/png');
+        canvas.width = width;
+        canvas.height = height;
+        resetSignatureCanvas(false);
+
+        // Preserve a prior drawing when resizing while modal is open.
+        if (state.signatureCapture.hasStroke && existing) {
+            const img = new Image();
+            img.onload = function () {
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            };
+            img.src = existing;
+        }
+    }
+
+    function resetSignatureCanvas(resetStroke) {
+        const shouldResetStroke = resetStroke !== false;
         const canvas = el.signatureCanvas;
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.lineWidth = 2.2;
         ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         ctx.strokeStyle = '#0f172a';
-        state.signatureCapture.hasStroke = false;
+        if (shouldResetStroke) {
+            state.signatureCapture.hasStroke = false;
+        }
     }
 
     function openSignatureModal(role) {
@@ -721,6 +754,7 @@ Date: {{date}}
             : (collectVariables().client_name || '');
         el.signatureName.value = defaultName;
         el.signatureSubtitle.textContent = 'Signing as ' + role + '. Draw your signature below.';
+        resizeSignatureCanvas();
         resetSignatureCanvas();
         el.signatureModal.classList.remove('hidden');
     }
@@ -1093,6 +1127,7 @@ Date: {{date}}
         renderPreview();
         renderRevisionList();
         renderClientSelect();
+        clearComparison();
     }
 
     function normalizeClausePackBlock(markdown, clausePackKey) {
@@ -1771,11 +1806,9 @@ ${el.preview.innerHTML}
         el.btnSignConsultant.addEventListener('click', function () { signRevision('consultant'); });
         el.btnSignClient.addEventListener('click', function () { signRevision('client'); });
         el.btnCompare.addEventListener('click', renderComparison);
-        el.btnClearCompare.addEventListener('click', function () {
-            state.compare.baseRevision = null;
-            state.compare.targetRevision = null;
-            el.compareOutput.textContent = 'No comparison selected.';
-        });
+        el.btnClearCompare.addEventListener('click', clearComparison);
+        el.compareBase.addEventListener('change', renderComparison);
+        el.compareTarget.addEventListener('change', renderComparison);
         el.librarySearch.addEventListener('input', function () {
             loadLibraryTemplates().catch(console.error);
         });
@@ -1794,6 +1827,11 @@ ${el.preview.innerHTML}
         el.signatureCanvas.addEventListener('pointermove', signaturePointerMove);
         el.signatureCanvas.addEventListener('pointerup', signaturePointerUp);
         el.signatureCanvas.addEventListener('pointercancel', signaturePointerUp);
+        window.addEventListener('resize', function () {
+            if (!el.signatureModal.classList.contains('hidden')) {
+                resizeSignatureCanvas();
+            }
+        });
 
         el.btnSaveClient.addEventListener('click', function () {
             saveClient().catch(console.error);
@@ -1852,6 +1890,7 @@ ${el.preview.innerHTML}
         setupEvents();
         syncSharingState();
         await loadLibraryTemplates();
+        resizeSignatureCanvas();
         resetSignatureCanvas();
     }
 
