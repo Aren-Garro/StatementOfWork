@@ -192,6 +192,33 @@ def _parse_publish_request(data: dict) -> dict:
     }
 
 
+def _validate_template_payload(data: dict, *, for_update: bool) -> str | None:
+    """Return validation error text for template payloads."""
+    if for_update:
+        if 'name' in data and not isinstance(data.get('name'), str):
+            return 'name must be a string'
+        if 'name' in data and not data.get('name', '').strip():
+            return 'name cannot be empty'
+        if 'description' in data and not isinstance(data.get('description'), str):
+            return 'description must be a string'
+        if 'markdown' in data and not isinstance(data.get('markdown'), str):
+            return 'markdown must be a string'
+        if 'variables' in data and not isinstance(data.get('variables'), dict):
+            return 'variables must be an object'
+        return None
+
+    name = data.get('name')
+    markdown = data.get('markdown')
+    variables = data.get('variables', {})
+    if not isinstance(name, str) or not name.strip():
+        return 'name is required'
+    if not isinstance(markdown, str) or not markdown.strip():
+        return 'markdown is required'
+    if not isinstance(variables, dict):
+        return 'variables must be an object'
+    return None
+
+
 # Page Routes
 @main_bp.route('/')
 def index():
@@ -331,23 +358,16 @@ def save_template():
     if data is None:
         return jsonify({'error': 'JSON object body is required'}), 400
 
-    name = (data.get('name') or '').strip()
-    markdown = data.get('markdown')
-    variables = data.get('variables', {})
-
-    if not name:
-        return jsonify({'error': 'name is required'}), 400
-    if not isinstance(markdown, str) or not markdown.strip():
-        return jsonify({'error': 'markdown is required'}), 400
-    if not isinstance(variables, dict):
-        return jsonify({'error': 'variables must be an object'}), 400
+    error = _validate_template_payload(data, for_update=False)
+    if error:
+        return jsonify({'error': error}), 400
 
     tm = TemplateManager()
     template = tm.save_template(
-        name=name,
+        name=data.get('name', '').strip(),
         description=data.get('description', ''),
-        markdown=markdown,
-        variables=variables,
+        markdown=data.get('markdown'),
+        variables=data.get('variables', {}),
     )
     return jsonify({'template': template}), 201
 
@@ -369,16 +389,9 @@ def update_template(template_id):
     if data is None:
         return jsonify({'error': 'JSON object body is required'}), 400
 
-    if 'name' in data and not isinstance(data.get('name'), str):
-        return jsonify({'error': 'name must be a string'}), 400
-    if 'name' in data and not data.get('name', '').strip():
-        return jsonify({'error': 'name cannot be empty'}), 400
-    if 'description' in data and not isinstance(data.get('description'), str):
-        return jsonify({'error': 'description must be a string'}), 400
-    if 'markdown' in data and not isinstance(data.get('markdown'), str):
-        return jsonify({'error': 'markdown must be a string'}), 400
-    if 'variables' in data and not isinstance(data.get('variables'), dict):
-        return jsonify({'error': 'variables must be an object'}), 400
+    error = _validate_template_payload(data, for_update=True)
+    if error:
+        return jsonify({'error': error}), 400
 
     tm = TemplateManager()
     template = tm.update_template(template_id, data)
