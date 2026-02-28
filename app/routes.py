@@ -192,6 +192,16 @@ def _parse_publish_request(data: dict) -> dict:
     }
 
 
+def _parse_publish_email_request(data: dict) -> dict:
+    """Normalize plugin email payload."""
+    return {
+        'to_email': (data.get('to_email') or '').strip(),
+        'attach_pdf': _parse_bool(data.get('attach_pdf'), True),
+        'subject': (data.get('subject') or '').strip(),
+        'message': (data.get('message') or '').strip(),
+    }
+
+
 def _validate_template_payload(data: dict, *, for_update: bool) -> str | None:
     """Return validation error text for template payloads."""
     if for_update:
@@ -498,21 +508,17 @@ def plugin_email_published(publish_id):
     data = _read_json_object()
     if data is None:
         return jsonify({'error': 'JSON object body is required'}), 400
-
-    to_email = (data.get('to_email') or '').strip()
-    attach_pdf = _parse_bool(data.get('attach_pdf'), True)
-    custom_subject = (data.get('subject') or '').strip()
-    custom_message = (data.get('message') or '').strip()
+    payload = _parse_publish_email_request(data)
 
     db = get_db()
     try:
         row = get_published_for_email(db=db, publish_id=publish_id)
         result = send_published_email(
             row=row,
-            to_email=to_email,
-            subject=custom_subject,
-            message=custom_message,
-            attach_pdf=attach_pdf,
+            to_email=payload['to_email'],
+            subject=payload['subject'],
+            message=payload['message'],
+            attach_pdf=payload['attach_pdf'],
             host_url=request.host_url,
         )
     except ServiceError as exc:
