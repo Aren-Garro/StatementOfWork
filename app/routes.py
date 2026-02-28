@@ -155,6 +155,43 @@ def _log_event(level: str, event: str, **fields):
     getattr(logger, level, logger.info)(message)
 
 
+def _enforce_rate_limit(client_ip: str, event_prefix: str):
+    """Return a 429 response tuple when requests exceed limits."""
+    if not _is_rate_limited(client_ip):
+        return None
+    _log_event('warning', f'{event_prefix}.rate_limited', client_ip=client_ip)
+    return jsonify({'error': 'Too many requests'}), 429
+
+
+def _enforce_publish_captcha(client_ip: str):
+    """Return a 429 response tuple when CAPTCHA verification fails."""
+    if not _needs_captcha(client_ip):
+        return None
+
+    required_token = (os.environ.get('PUBLISH_CAPTCHA_TOKEN') or '').strip()
+    supplied = (request.headers.get('X-Captcha-Token') or '').strip()
+    if required_token and supplied != required_token:
+        _log_event('warning', 'plugin.publish.captcha_failed', client_ip=client_ip)
+        return jsonify({'error': 'Captcha verification required'}), 429
+    return None
+
+
+def _parse_publish_request(data: dict) -> dict:
+    """Normalize publish payload for service input."""
+    raw_html = (data.get('html') or '').strip()
+    return {
+        'title': (data.get('title') or 'Statement of Work').strip()[:200],
+        'sanitized_html': _sanitize_html(raw_html),
+        'expires_in_days': _parse_int(data.get('expires_in_days', 30), 30),
+        'revision': _parse_int(data.get('revision'), None),
+        'signed': _parse_bool(data.get('signed'), False),
+        'signed_only': _parse_bool(data.get('signed_only'), False),
+        'template': (data.get('template') or 'modern').strip(),
+        'page_size': (data.get('page_size') or 'Letter').strip(),
+        'jurisdiction': (data.get('jurisdiction') or 'US_BASE').strip()[:32] or 'US_BASE',
+    }
+
+
 # Page Routes
 @main_bp.route('/')
 def index():
@@ -365,43 +402,29 @@ def delete_template(template_id):
 def publish_document():
     """Publish a read-only document with expiry."""
     client_ip = _get_client_ip()
+    limited = _enforce_rate_limit(client_ip, 'plugin.publish')
+    if limited:
+        return limited
+    captcha_blocked = _enforce_publish_captcha(client_ip)
+    if captcha_blocked:
+        return captcha_blocked
 
-    if _is_rate_limited(client_ip):
-        _log_event('warning', 'plugin.publish.rate_limited', client_ip=client_ip)
-        return jsonify({'error': 'Too many requests'}), 429
-
-    if _needs_captcha(client_ip):
-        required_token = (os.environ.get('PUBLISH_CAPTCHA_TOKEN') or '').strip()
-        supplied = (request.headers.get('X-Captcha-Token') or '').strip()
-        if required_token and supplied != required_token:
-            _log_event('warning', 'plugin.publish.captcha_failed', client_ip=client_ip)
-            return jsonify({'error': 'Captcha verification required'}), 429
-
-    data = request.get_json() or {}
-    title = (data.get('title') or 'Statement of Work').strip()[:200]
-    raw_html = (data.get('html') or '').strip()
-    html = _sanitize_html(raw_html)
-    expires_in_days = _parse_int(data.get('expires_in_days', 30), 30)
-    revision = _parse_int(data.get('revision'), None)
-    signed = _parse_bool(data.get('signed'), False)
-    signed_only = _parse_bool(data.get('signed_only'), False)
-    template = (data.get('template') or 'modern').strip()
-    page_size = (data.get('page_size') or 'Letter').strip()
-    jurisdiction = (data.get('jurisdiction') or 'US_BASE').strip()[:32] or 'US_BASE'
+    data = _read_json_object() or {}
+    payload = _parse_publish_request(data)
 
     db = get_db()
     try:
         published = create_published_document(
             db=db,
-            title=title,
-            sanitized_html=html,
-            expires_in_days=expires_in_days,
-            revision=revision,
-            signed=signed,
-            signed_only=signed_only,
-            jurisdiction=jurisdiction,
-            template=template,
-            page_size=page_size,
+            title=payload['title'],
+            sanitized_html=payload['sanitized_html'],
+            expires_in_days=payload['expires_in_days'],
+            revision=payload['revision'],
+            signed=payload['signed'],
+            signed_only=payload['signed_only'],
+            jurisdiction=payload['jurisdiction'],
+            template=payload['template'],
+            page_size=payload['page_size'],
             allowed_jurisdictions=_ALLOWED_JURISDICTIONS,
             allowed_templates=_ALLOWED_TEMPLATES,
             allowed_page_sizes=_ALLOWED_PAGE_SIZES,
@@ -454,9 +477,9 @@ def plugin_get_published(publish_id):
 def plugin_email_published(publish_id):
     """Send published SOW by email via SMTP."""
     client_ip = _get_client_ip()
-    if _is_rate_limited(client_ip):
-        _log_event('warning', 'plugin.email.rate_limited', client_ip=client_ip)
-        return jsonify({'error': 'Too many requests'}), 429
+    limited = _enforce_rate_limit(client_ip, 'plugin.email')
+    if limited:
+        return limited
 
     publish_id = _normalize_doc_id(publish_id)
     data = _read_json_object()

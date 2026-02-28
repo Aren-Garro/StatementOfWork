@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 import app.models as models
+import app.routes as routes
 import app.services.email_delivery_service as email_delivery_service
 from app import create_app
 from app.email_service import EmailConfigError, EmailSendError
@@ -15,8 +16,10 @@ from app.email_service import EmailConfigError, EmailSendError
 def client(monkeypatch):
     db_path = models.DATABASE_PATH.replace("sow.db", f"sow_plugin_test_{uuid4().hex}.db")
     monkeypatch.setattr(models, "DATABASE_PATH", db_path)
+    routes._rate_events.clear()
     app = create_app({"TESTING": True})
     yield app.test_client(), app
+    routes._rate_events.clear()
     if os.path.exists(db_path):
         os.remove(db_path)
 
@@ -112,6 +115,16 @@ def test_publish_parses_boolean_strings(client):
     assert "signed_only" in response.get_json()["error"]
 
 
+def test_publish_rejects_non_object_json_payload(client):
+    test_client, _ = client
+    response = test_client.post(
+        "/plugin/v1/publish",
+        json=["not", "an", "object"],
+    )
+    assert response.status_code == 400
+    assert "html is required" in response.get_json()["error"]
+
+
 def test_publish_persists_metadata(client):
     test_client, app = client
     response = test_client.post(
@@ -179,6 +192,17 @@ def test_plugin_email_requires_valid_recipient(client):
     )
     assert response.status_code == 400
     assert "to_email" in response.get_json()["error"]
+
+
+def test_plugin_email_requires_json_object_body(client):
+    test_client, _ = client
+    published = _publish_for_email(test_client)
+    response = test_client.post(
+        f"/plugin/v1/p/{published['publish_id']}/email",
+        json=["not", "an", "object"],
+    )
+    assert response.status_code == 400
+    assert "JSON object body is required" in response.get_json()["error"]
 
 
 def test_plugin_email_sends_successfully(client, monkeypatch):
