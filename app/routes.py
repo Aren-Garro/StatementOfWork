@@ -3,8 +3,7 @@ import io
 import json
 import os
 import re
-import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from collections import defaultdict, deque
 
 from flask import (
@@ -20,6 +19,8 @@ from app.markdown_parser import render_markdown
 from app.models import get_db
 from app.template_manager import TemplateManager
 from app.template_library import filter_library_items, load_curated_templates
+from app.services.publish_service import ServiceError, create_published_document, get_published_for_email
+from app.services.email_delivery_service import send_published_email
 
 main_bp = Blueprint('main', __name__)
 api_bp = Blueprint('api', __name__)
@@ -29,6 +30,8 @@ _RATE_WINDOW_SECONDS = 60
 _RATE_LIMIT_PER_WINDOW = 20
 _CAPTCHA_THRESHOLD_PER_WINDOW = 10
 _rate_events = defaultdict(deque)
+_ALLOWED_TEMPLATES = {'modern', 'classic', 'minimal'}
+_ALLOWED_PAGE_SIZES = {'Letter', 'A4', 'Legal'}
 _ALLOWED_JURISDICTIONS = {
     'US_BASE',
     'US_NY',
@@ -382,53 +385,54 @@ def publish_document():
     revision = _parse_int(data.get('revision'), None)
     signed = _parse_bool(data.get('signed'), False)
     signed_only = _parse_bool(data.get('signed_only'), False)
+    template = (data.get('template') or 'modern').strip()
+    page_size = (data.get('page_size') or 'Letter').strip()
     jurisdiction = (data.get('jurisdiction') or 'US_BASE').strip()[:32] or 'US_BASE'
 
-    if not html:
-        _log_event('info', 'plugin.publish.invalid_html', client_ip=client_ip)
-        return jsonify({'error': 'html is required'}), 400
-    if signed_only and not signed:
-        _log_event('info', 'plugin.publish.invalid_signed', client_ip=client_ip)
-        return jsonify({'error': 'signed_only publish requires signed=true'}), 400
-    if revision is not None and revision < 1:
-        _log_event('info', 'plugin.publish.invalid_revision', client_ip=client_ip, revision=revision)
-        return jsonify({'error': 'revision must be >= 1 when provided'}), 400
-    if jurisdiction not in _ALLOWED_JURISDICTIONS:
-        _log_event('info', 'plugin.publish.invalid_jurisdiction', client_ip=client_ip, jurisdiction=jurisdiction)
-        return jsonify({'error': 'invalid jurisdiction'}), 400
-
-    expires_in_days = max(1, min(365, expires_in_days))
-    doc_id = secrets.token_urlsafe(8)
-    now = _utc_now()
-    expires_at = now + timedelta(days=expires_in_days)
-
     db = get_db()
-    db.execute(
-        '''INSERT INTO published_docs (id, title, html, created_at, expires_at, revision, signed, jurisdiction)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-        (doc_id, title, html, now.isoformat(), expires_at.isoformat(), revision, 1 if signed else 0, jurisdiction),
-    )
-    db.commit()
+    try:
+        published = create_published_document(
+            db=db,
+            title=title,
+            sanitized_html=html,
+            expires_in_days=expires_in_days,
+            revision=revision,
+            signed=signed,
+            signed_only=signed_only,
+            jurisdiction=jurisdiction,
+            template=template,
+            page_size=page_size,
+            allowed_jurisdictions=_ALLOWED_JURISDICTIONS,
+            allowed_templates=_ALLOWED_TEMPLATES,
+            allowed_page_sizes=_ALLOWED_PAGE_SIZES,
+        )
+    except ServiceError as exc:
+        _log_event('info', 'plugin.publish.invalid', client_ip=client_ip, error=str(exc))
+        return jsonify({'error': str(exc)}), exc.status_code
 
-    view_url = f"{request.host_url.rstrip('/')}/p/{doc_id}"
+    view_url = f"{request.host_url.rstrip('/')}/p/{published['publish_id']}"
     _log_event(
         'info',
         'plugin.publish.created',
         client_ip=client_ip,
-        publish_id=doc_id,
-        revision=revision,
-        signed=signed,
-        jurisdiction=jurisdiction,
-        expires_at=expires_at.isoformat(),
+        publish_id=published['publish_id'],
+        revision=published['revision'],
+        signed=published['signed'],
+        jurisdiction=published['jurisdiction'],
+        template=published['template'],
+        page_size=published['page_size'],
+        expires_at=published['expires_at'],
     )
     return jsonify(
         {
-            'publish_id': doc_id,
+            'publish_id': published['publish_id'],
             'view_url': view_url,
-            'expires_at': expires_at.isoformat(),
-            'revision': revision,
-            'signed': signed,
-            'jurisdiction': jurisdiction,
+            'expires_at': published['expires_at'],
+            'revision': published['revision'],
+            'signed': published['signed'],
+            'jurisdiction': published['jurisdiction'],
+            'template': published['template'],
+            'page_size': published['page_size'],
             'sanitized': True,
         }
     ), 201
@@ -440,7 +444,7 @@ def plugin_get_published(publish_id):
     publish_id = _normalize_doc_id(publish_id)
     db = get_db()
     row = db.execute(
-        '''SELECT id, title, created_at, expires_at, deleted, views, revision, signed, jurisdiction
+        '''SELECT id, title, created_at, expires_at, deleted, views, revision, signed, jurisdiction, template, page_size
            FROM published_docs WHERE id = ?''',
         (publish_id,),
     ).fetchone()
@@ -449,6 +453,51 @@ def plugin_get_published(publish_id):
         return jsonify({'error': 'Not found'}), 404
 
     return jsonify({'document': dict(row)})
+
+
+@plugin_bp.route('/v1/p/<publish_id>/email', methods=['POST'])
+def plugin_email_published(publish_id):
+    """Send published SOW by email via SMTP."""
+    client_ip = _get_client_ip()
+    if _is_rate_limited(client_ip):
+        _log_event('warning', 'plugin.email.rate_limited', client_ip=client_ip)
+        return jsonify({'error': 'Too many requests'}), 429
+
+    publish_id = _normalize_doc_id(publish_id)
+    data = _read_json_object()
+    if data is None:
+        return jsonify({'error': 'JSON object body is required'}), 400
+
+    to_email = (data.get('to_email') or '').strip()
+    attach_pdf = _parse_bool(data.get('attach_pdf'), True)
+    custom_subject = (data.get('subject') or '').strip()
+    custom_message = (data.get('message') or '').strip()
+
+    db = get_db()
+    try:
+        row = get_published_for_email(db=db, publish_id=publish_id)
+        result = send_published_email(
+            row=row,
+            to_email=to_email,
+            subject=custom_subject,
+            message=custom_message,
+            attach_pdf=attach_pdf,
+            host_url=request.host_url,
+        )
+    except ServiceError as exc:
+        _log_event('error', 'plugin.email.failed', client_ip=client_ip, publish_id=publish_id, error=str(exc))
+        return jsonify({'error': str(exc)}), exc.status_code
+
+    _log_event(
+        'info',
+        'plugin.email.sent',
+        client_ip=client_ip,
+        publish_id=publish_id,
+        to_email=result['to_email'],
+        attach_pdf=result['attached_pdf'],
+        sent_at=result['sent_at'],
+    )
+    return jsonify(result)
 
 
 @plugin_bp.route('/v1/p/<publish_id>', methods=['DELETE'])

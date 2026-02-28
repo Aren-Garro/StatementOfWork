@@ -56,13 +56,17 @@ def init_db(app):
             views INTEGER NOT NULL DEFAULT 0,
             revision INTEGER,
             signed INTEGER NOT NULL DEFAULT 0,
-            jurisdiction TEXT NOT NULL DEFAULT 'US_BASE'
+            jurisdiction TEXT NOT NULL DEFAULT 'US_BASE',
+            template TEXT NOT NULL DEFAULT 'modern',
+            page_size TEXT NOT NULL DEFAULT 'Letter'
         )
     ''')
 
     _ensure_column(db, 'published_docs', 'revision', 'INTEGER')
     _ensure_column(db, 'published_docs', 'signed', 'INTEGER NOT NULL DEFAULT 0')
     _ensure_column(db, 'published_docs', 'jurisdiction', "TEXT NOT NULL DEFAULT 'US_BASE'")
+    _ensure_column(db, 'published_docs', 'template', "TEXT NOT NULL DEFAULT 'modern'")
+    _ensure_column(db, 'published_docs', 'page_size', "TEXT NOT NULL DEFAULT 'Letter'")
 
     # Seed sample templates if empty
     count = db.execute('SELECT COUNT(*) FROM templates').fetchone()[0]

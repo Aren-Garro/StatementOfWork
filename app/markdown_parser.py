@@ -61,37 +61,49 @@ def _format_money(amount: float) -> str:
     return f'${amount:.2f}'
 
 
-def _build_pricing_summary(content: str) -> str:
+def _extract_percent(line: str, field: str) -> float | None:
+    if not re.match(rf'^{field}\s*:', line, flags=re.IGNORECASE):
+        return None
+    match = re.search(r'(-?\d+(\.\d+)?)\s*%?', line)
+    if not match:
+        return None
+    return float(match.group(1))
+
+
+def _extract_table_amount(line: str) -> float | None:
+    if '|' not in line or re.match(r'^\s*\|?[-:|\s]+\|?\s*$', line):
+        return None
+    cells = [cell.strip() for cell in line.split('|') if cell.strip()]
+    if len(cells) < 2:
+        return None
+    if 'total' in cells[0].lower():
+        return None
+    return _parse_money(cells[-1])
+
+
+def _summarize_pricing_values(content: str) -> tuple[float, float, float]:
     lines = content.replace('\r\n', '\n').split('\n')
     subtotal = 0.0
     discount_pct = 0.0
     tax_pct = 0.0
-
     for raw_line in lines:
         line = raw_line.strip()
-        if re.match(r'^discount\s*:', line, flags=re.IGNORECASE):
-            match = re.search(r'(-?\d+(\.\d+)?)\s*%?', line)
-            if match:
-                discount_pct = float(match.group(1))
+        maybe_discount = _extract_percent(line, 'discount')
+        if maybe_discount is not None:
+            discount_pct = maybe_discount
             continue
-        if re.match(r'^tax\s*:', line, flags=re.IGNORECASE):
-            match = re.search(r'(-?\d+(\.\d+)?)\s*%?', line)
-            if match:
-                tax_pct = float(match.group(1))
+        maybe_tax = _extract_percent(line, 'tax')
+        if maybe_tax is not None:
+            tax_pct = maybe_tax
             continue
-        if '|' not in line or re.match(r'^\s*\|?[-:|\s]+\|?\s*$', line):
-            continue
+        maybe_amount = _extract_table_amount(line)
+        if maybe_amount is not None:
+            subtotal += maybe_amount
+    return subtotal, discount_pct, tax_pct
 
-        cells = [cell.strip() for cell in line.split('|') if cell.strip()]
-        if len(cells) < 2:
-            continue
-        if 'total' in cells[0].lower():
-            continue
-        maybe_amount = _parse_money(cells[-1])
-        if maybe_amount is None:
-            continue
-        subtotal += maybe_amount
 
+def _build_pricing_summary(content: str) -> str:
+    subtotal, discount_pct, tax_pct = _summarize_pricing_values(content)
     discount_amount = subtotal * (discount_pct / 100.0)
     discounted = subtotal - discount_amount
     tax_amount = discounted * (tax_pct / 100.0)
