@@ -19,6 +19,7 @@ from flask import (
 from app.markdown_parser import render_markdown
 from app.models import get_db
 from app.template_manager import TemplateManager
+from app.template_library import filter_library_items, load_curated_templates
 
 main_bp = Blueprint('main', __name__)
 api_bp = Blueprint('api', __name__)
@@ -222,6 +223,56 @@ def list_templates():
     tm = TemplateManager()
     templates = tm.list_templates()
     return jsonify({'templates': templates})
+
+
+@api_bp.route('/templates/library', methods=['GET'])
+def template_library():
+    """Return curated and user templates with optional filtering."""
+    q = (request.args.get('q') or '').strip()
+    industry = (request.args.get('industry') or '').strip()
+    limit = max(1, min(100, _parse_int(request.args.get('limit'), 25)))
+    offset = max(0, _parse_int(request.args.get('offset'), 0))
+
+    curated = []
+    for item in load_curated_templates():
+        normalized = dict(item)
+        normalized['source'] = 'curated'
+        curated.append(normalized)
+
+    tm = TemplateManager()
+    user_templates = []
+    for t in tm.list_templates():
+        user_templates.append(
+            {
+                'id': f"user_{t['id']}",
+                'name': t.get('name', ''),
+                'description': t.get('description', ''),
+                'industry': 'Custom',
+                'tags': ['saved', 'custom'],
+                'markdown': t.get('markdown', ''),
+                'variables': t.get('variables', {}),
+                'source': 'user',
+                'template_id': t.get('id'),
+            }
+        )
+
+    merged = curated + user_templates
+    filtered = filter_library_items(merged, query=q, industry=industry)
+    total = len(filtered)
+    page = filtered[offset:offset + limit]
+    industries = sorted(
+        {str(item.get('industry', '')).strip() for item in merged if str(item.get('industry', '')).strip()}
+    )
+
+    return jsonify(
+        {
+            'templates': page,
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'industries': industries,
+        }
+    )
 
 
 @api_bp.route('/templates', methods=['POST'])

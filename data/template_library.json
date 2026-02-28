@@ -1,0 +1,60 @@
+{
+  "templates": [
+    {
+      "id": "curated_it_consulting",
+      "name": "IT Consulting Baseline SOW",
+      "description": "Discovery-to-delivery engagement template for independent IT consultants.",
+      "industry": "IT",
+      "tags": ["discovery", "delivery", "retainer"],
+      "variables": {
+        "client_name": "Client Name",
+        "project_name": "IT Consulting Engagement",
+        "consultant_name": "Consultant Name",
+        "date": "2026-02-28"
+      },
+      "markdown": "# {{project_name}}\n## Statement of Work\n\n**Prepared for:** {{client_name}}\n**Prepared by:** {{consultant_name}}\n**Date:** {{date}}\n\n## Scope\n- Discovery workshops\n- System design recommendations\n- Implementation support\n\n## Deliverables\n- Technical assessment report\n- Implementation roadmap\n- Weekly status summaries\n\n## Timeline\n:::timeline\n- Week 1: Discovery\n- Week 2-3: Analysis\n- Week 4-6: Implementation support\n:::\n\n## Acceptance Criteria\n- Deliverables accepted in writing by client sponsor\n\n## Payment Terms\n- Net 15\n\n## Change Order\nScope updates require written approval.\n\n:::signature\nClient: {{client_name}}\nDate: {{date}}\n---\nConsultant: {{consultant_name}}\nDate: {{date}}\n:::\n"
+    },
+    {
+      "id": "curated_web_build",
+      "name": "Website Build SOW",
+      "description": "Full website redesign and launch template with phased milestones.",
+      "industry": "Marketing",
+      "tags": ["website", "design", "launch"],
+      "variables": {
+        "client_name": "Client Name",
+        "project_name": "Website Redesign",
+        "consultant_name": "Consultant Name",
+        "date": "2026-02-28"
+      },
+      "markdown": "# {{project_name}}\n## Statement of Work\n\n**Prepared for:** {{client_name}}\n**Prepared by:** {{consultant_name}}\n**Date:** {{date}}\n\n## Scope\n- IA and UX planning\n- Visual design and responsive build\n- CMS setup and launch support\n\n## Deliverables\n- Approved homepage and key page designs\n- Production-ready front-end templates\n- Launch checklist\n\n## Timeline\n:::timeline\n- Week 1-2: Strategy and wireframes\n- Week 3-5: Design and development\n- Week 6: QA and launch\n:::\n\n## Acceptance Criteria\n- Responsive behavior validated on agreed devices\n- Launch defects above severity-2 resolved\n\n## Payment Terms\n- 40% at project start\n- 30% after development complete\n- 30% at launch\n\n## Change Order\nAny net-new page or feature requires written approval.\n\n:::signature\nClient: {{client_name}}\nDate: {{date}}\n---\nConsultant: {{consultant_name}}\nDate: {{date}}\n:::\n"
+    },
+    {
+      "id": "curated_saas_mvp",
+      "name": "SaaS MVP Delivery SOW",
+      "description": "Template for shipping MVP scope with explicit non-goals and acceptance gates.",
+      "industry": "SaaS",
+      "tags": ["mvp", "product", "engineering"],
+      "variables": {
+        "client_name": "Client Name",
+        "project_name": "SaaS MVP Delivery",
+        "consultant_name": "Consultant Name",
+        "date": "2026-02-28"
+      },
+      "markdown": "# {{project_name}}\n## Statement of Work\n\n**Prepared for:** {{client_name}}\n**Prepared by:** {{consultant_name}}\n**Date:** {{date}}\n\n## Scope\n- MVP feature implementation\n- Core analytics instrumentation\n- Initial deployment setup\n\n## Out of Scope\n- Native mobile applications\n- Enterprise SSO\n\n## Deliverables\n- MVP codebase and deployment notes\n- Demo environment\n- Handoff checklist\n\n## Acceptance Criteria\n- User signup and primary workflow operate in production\n- P1 defects fixed before signoff\n\n## Payment Terms\n- Net 30\n\n## Change Order\nNew feature requests are handled through signed change orders.\n\n:::signature\nClient: {{client_name}}\nDate: {{date}}\n---\nConsultant: {{consultant_name}}\nDate: {{date}}\n:::\n"
+    },
+    {
+      "id": "curated_operations_advisory",
+      "name": "Operations Advisory SOW",
+      "description": "Operational process improvement engagement for small teams.",
+      "industry": "Operations",
+      "tags": ["process", "kpi", "advisory"],
+      "variables": {
+        "client_name": "Client Name",
+        "project_name": "Operations Advisory",
+        "consultant_name": "Consultant Name",
+        "date": "2026-02-28"
+      },
+      "markdown": "# {{project_name}}\n## Statement of Work\n\n**Prepared for:** {{client_name}}\n**Prepared by:** {{consultant_name}}\n**Date:** {{date}}\n\n## Scope\n- Current-state process audit\n- KPI definition and dashboard recommendations\n- Team enablement sessions\n\n## Deliverables\n- Process map with bottleneck analysis\n- KPI framework\n- 30/60/90-day action plan\n\n## Acceptance Criteria\n- Stakeholder review complete and approved\n\n## Payment Terms\n- 50% upfront, 50% at final review\n\n## Change Order\nSignificant scope changes require a written amendment.\n\n:::signature\nClient: {{client_name}}\nDate: {{date}}\n---\nConsultant: {{consultant_name}}\nDate: {{date}}\n:::\n"
+    }
+  ]
+}

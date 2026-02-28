@@ -329,6 +329,146 @@ textarea {
 .theme-minimal { font-weight: 300; }
 .theme-minimal h1 { letter-spacing: -0.03em; }
 
+.library-list {
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 0.45rem;
+}
+
+.library-item {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #f8fbff;
+    padding: 0.5rem;
+}
+
+.library-item h3 {
+    margin: 0;
+    font-size: 0.86rem;
+}
+
+.library-meta {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.library-item p {
+    margin: 0.35rem 0;
+    font-size: 0.78rem;
+}
+
+.library-actions {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.library-actions .btn {
+    flex: 1;
+    font-size: 0.74rem;
+    padding: 0.3rem 0.35rem;
+}
+
+.compare-output {
+    margin-top: 0.45rem;
+}
+
+.diff-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.diff-col {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fbfcfe;
+    padding: 0.35rem;
+}
+
+.diff-line {
+    padding: 0.15rem 0.3rem;
+    margin-bottom: 0.2rem;
+    border-radius: 5px;
+    font-family: "Cascadia Code", "Consolas", monospace;
+    font-size: 0.74rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.diff-removed {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+}
+
+.diff-added {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+}
+
+.diff-changed {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+}
+
+.diff-unchanged {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.sig-image {
+    margin-top: 0.35rem;
+    max-width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #ffffff;
+}
+
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1200;
+    padding: 1rem;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.modal-content {
+    width: min(780px, 100%);
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 0.9rem;
+}
+
+#signature-canvas {
+    width: 100%;
+    border: 1px dashed #94a3b8;
+    border-radius: 8px;
+    background: #ffffff;
+    touch-action: none;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 0.45rem;
+    margin-top: 0.7rem;
+}
+
+.modal-actions .btn {
+    flex: 1;
+}
+
 @media (max-width: 1250px) {
     .editor-layout {
         grid-template-columns: 1fr;
@@ -339,6 +479,24 @@ textarea {
     .sidebar { order: 1; }
     .pane { order: 2; min-height: 360px; }
     .preview-pane { order: 3; }
+
+    .diff-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .modal-content {
+        padding: 0.65rem;
+    }
+
+    #signature-canvas {
+        height: 190px;
+    }
+
+    .modal-actions {
+        flex-direction: column;
+    }
 }
 
 @media print {

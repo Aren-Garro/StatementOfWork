@@ -100,8 +100,30 @@
             </section>
 
             <section>
+                <h2>Template Library</h2>
+                <input id="library-search" type="text" placeholder="Search templates">
+                <select id="library-industry" class="control-select full-width">
+                    <option value="">All industries</option>
+                </select>
+                <div id="library-list" class="library-list"></div>
+            </section>
+
+            <section>
                 <h2>Revisions</h2>
                 <ul id="revision-list" class="revision-list"></ul>
+            </section>
+
+            <section>
+                <h2>Compare Revisions</h2>
+                <label>Base Revision
+                    <select id="compare-base" class="control-select full-width"></select>
+                </label>
+                <label>Target Revision
+                    <select id="compare-target" class="control-select full-width"></select>
+                </label>
+                <button id="btn-compare" class="btn btn-small">Compare</button>
+                <button id="btn-clear-compare" class="btn btn-small">Clear Compare</button>
+                <div id="compare-output" class="compare-output muted">No comparison selected.</div>
             </section>
 
             <section>
@@ -125,6 +147,20 @@
             <article id="preview-content" class="preview theme-modern"></article>
         </section>
     </main>
+
+    <div id="signature-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="signature-title">
+        <div class="modal-content">
+            <h2 id="signature-title">Capture Signature</h2>
+            <p id="signature-subtitle" class="muted"></p>
+            <label>Signer Name<input id="signature-name" type="text" placeholder="Signer Name"></label>
+            <canvas id="signature-canvas" width="700" height="220"></canvas>
+            <div class="modal-actions">
+                <button id="btn-signature-clear" class="btn">Clear</button>
+                <button id="btn-signature-cancel" class="btn">Cancel</button>
+                <button id="btn-signature-accept" class="btn btn-primary">Accept Signature</button>
+            </div>
+        </div>
+    </div>
 
     <script src="/static/js/editor.js"></script>
 </body>

@@ -120,6 +120,19 @@ Date: {{date}}
         activeRevision: null,
         clients: [],
         saveTimer: null,
+        libraryTemplates: [],
+        compare: {
+            baseRevision: null,
+            targetRevision: null,
+        },
+        signatureCapture: {
+            role: null,
+            drawing: false,
+            hasStroke: false,
+            pointerId: null,
+            lastX: 0,
+            lastY: 0,
+        },
     };
 
     const el = {
@@ -133,6 +146,14 @@ Date: {{date}}
         guardrailList: document.getElementById('guardrail-list'),
         revisionList: document.getElementById('revision-list'),
         docList: document.getElementById('doc-list'),
+        librarySearch: document.getElementById('library-search'),
+        libraryIndustry: document.getElementById('library-industry'),
+        libraryList: document.getElementById('library-list'),
+        compareBase: document.getElementById('compare-base'),
+        compareTarget: document.getElementById('compare-target'),
+        btnCompare: document.getElementById('btn-compare'),
+        btnClearCompare: document.getElementById('btn-clear-compare'),
+        compareOutput: document.getElementById('compare-output'),
         templateSelect: document.getElementById('template-select'),
         pageSize: document.getElementById('page-size'),
         clausePack: document.getElementById('clause-pack'),
@@ -156,6 +177,13 @@ Date: {{date}}
         fileImport: document.getElementById('file-import'),
         btnPublish: document.getElementById('btn-publish'),
         btnSettings: document.getElementById('btn-settings'),
+        signatureModal: document.getElementById('signature-modal'),
+        signatureSubtitle: document.getElementById('signature-subtitle'),
+        signatureName: document.getElementById('signature-name'),
+        signatureCanvas: document.getElementById('signature-canvas'),
+        btnSignatureClear: document.getElementById('btn-signature-clear'),
+        btnSignatureCancel: document.getElementById('btn-signature-cancel'),
+        btnSignatureAccept: document.getElementById('btn-signature-accept'),
         varInputs: document.querySelectorAll('[data-var]'),
         snippetButtons: document.querySelectorAll('[data-snippet]'),
     };
@@ -353,7 +381,13 @@ Date: {{date}}
         }
         let html = '<div class="sow-signatures"><h3>Recorded Signatures</h3><ul>';
         signatures.forEach((sig) => {
-            html += '<li><strong>' + inline(sig.role) + ':</strong> ' + inline(sig.signerName) + ' (' + inline(new Date(sig.signedAt).toLocaleString()) + ')</li>';
+            html += '<li><strong>' + inline(sig.role) + ':</strong> ' + inline(sig.signerName) +
+                ' (' + inline(new Date(sig.signedAt).toLocaleString()) + ')' +
+                ' <em>via ' + inline(sig.method || 'native_esign') + '</em>';
+            if (sig.imageDataUrl) {
+                html += '<div><img class="sig-image" src="' + sig.imageDataUrl + '" alt="Captured signature"></div>';
+            }
+            html += '</li>';
         });
         html += '</ul></div>';
         return html;
@@ -388,6 +422,356 @@ Date: {{date}}
             }
         });
         return { added: added, removed: removed };
+    }
+
+    function hashSignature(data) {
+        let hash = 2166136261;
+        for (let i = 0; i < data.length; i += 1) {
+            hash ^= data.charCodeAt(i);
+            hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+        }
+        return (hash >>> 0).toString(16);
+    }
+
+    function normalizeSignatures(signatures) {
+        if (!Array.isArray(signatures)) {
+            return [];
+        }
+        return signatures.map((sig) => ({
+            role: sig.role || 'unknown',
+            signerName: sig.signerName || '',
+            signedAt: sig.signedAt || nowIso(),
+            method: sig.method || 'native_esign',
+            imageDataUrl: sig.imageDataUrl || '',
+            hash: sig.hash || '',
+        }));
+    }
+
+    function buildLineDiff(baseText, targetText) {
+        const base = (baseText || '').split('\n');
+        const target = (targetText || '').split('\n');
+        const max = Math.max(base.length, target.length);
+        const rows = [];
+        let added = 0;
+        let removed = 0;
+        let changed = 0;
+
+        for (let i = 0; i < max; i += 1) {
+            const left = base[i];
+            const right = target[i];
+
+            if (left === right) {
+                rows.push({ left: left || '', right: right || '', cls: 'diff-unchanged' });
+                continue;
+            }
+
+            if (typeof left === 'undefined') {
+                added += 1;
+                rows.push({ left: '', right: right || '', cls: 'diff-added' });
+                continue;
+            }
+
+            if (typeof right === 'undefined') {
+                removed += 1;
+                rows.push({ left: left || '', right: '', cls: 'diff-removed' });
+                continue;
+            }
+
+            changed += 1;
+            rows.push({ left: left, right: right, cls: 'diff-changed' });
+        }
+
+        return { rows: rows, added: added, removed: removed, changed: changed };
+    }
+
+    function renderComparison() {
+        const doc = state.currentDoc;
+        if (!doc) {
+            return;
+        }
+        const baseNum = Number(el.compareBase.value || 0);
+        const targetNum = Number(el.compareTarget.value || 0);
+        if (!baseNum || !targetNum) {
+            el.compareOutput.textContent = 'Select two revisions to compare.';
+            return;
+        }
+
+        const baseRev = getRevisionByNumber(doc, baseNum);
+        const targetRev = getRevisionByNumber(doc, targetNum);
+        if (!baseRev || !targetRev) {
+            el.compareOutput.textContent = 'Unable to load one or both revisions.';
+            return;
+        }
+
+        state.compare.baseRevision = baseRev.revision;
+        state.compare.targetRevision = targetRev.revision;
+
+        const diff = buildLineDiff(baseRev.markdown, targetRev.markdown);
+        let leftHtml = '';
+        let rightHtml = '';
+        diff.rows.forEach((row) => {
+            leftHtml += '<div class="diff-line ' + row.cls + '">' + escapeHtml(row.left || ' ') + '</div>';
+            rightHtml += '<div class="diff-line ' + row.cls + '">' + escapeHtml(row.right || ' ') + '</div>';
+        });
+
+        el.compareOutput.innerHTML =
+            '<p><strong>Revision ' + baseRev.revision + ' vs Revision ' + targetRev.revision + '</strong>' +
+            ' | +' + diff.added + ' -' + diff.removed + ' ~' + diff.changed + '</p>' +
+            '<div class="diff-grid">' +
+            '<div class="diff-col"><p class="muted">Base (R' + baseRev.revision + ')</p>' + leftHtml + '</div>' +
+            '<div class="diff-col"><p class="muted">Target (R' + targetRev.revision + ')</p>' + rightHtml + '</div>' +
+            '</div>';
+    }
+
+    function refreshCompareSelectors() {
+        if (!state.currentDoc) {
+            return;
+        }
+        const revisions = state.currentDoc.revisions.slice().sort((a, b) => a.revision - b.revision);
+        const currentBase = Number(el.compareBase.value || 0);
+        const currentTarget = Number(el.compareTarget.value || 0);
+        el.compareBase.innerHTML = '';
+        el.compareTarget.innerHTML = '';
+
+        revisions.forEach((rev) => {
+            const optBase = document.createElement('option');
+            optBase.value = String(rev.revision);
+            optBase.textContent = 'Revision ' + rev.revision;
+            if (currentBase === rev.revision) {
+                optBase.selected = true;
+            }
+            el.compareBase.appendChild(optBase);
+
+            const optTarget = document.createElement('option');
+            optTarget.value = String(rev.revision);
+            optTarget.textContent = 'Revision ' + rev.revision;
+            if (currentTarget === rev.revision) {
+                optTarget.selected = true;
+            }
+            el.compareTarget.appendChild(optTarget);
+        });
+
+        if (!el.compareBase.value && revisions.length > 1) {
+            el.compareBase.value = String(revisions[revisions.length - 2].revision);
+        }
+        if (!el.compareTarget.value && revisions.length > 0) {
+            el.compareTarget.value = String(revisions[revisions.length - 1].revision);
+        }
+    }
+
+    async function loadLibraryTemplates() {
+        try {
+            const q = encodeURIComponent((el.librarySearch.value || '').trim());
+            const industry = encodeURIComponent((el.libraryIndustry.value || '').trim());
+            const response = await fetch('/api/templates/library?q=' + q + '&industry=' + industry + '&limit=40&offset=0');
+            if (!response.ok) {
+                throw new Error('library fetch failed');
+            }
+            const payload = await response.json();
+            state.libraryTemplates = Array.isArray(payload.templates) ? payload.templates : [];
+            renderLibraryIndustryOptions(payload.industries || []);
+            renderLibraryList();
+        } catch (err) {
+            console.error(err);
+            el.libraryList.innerHTML = '<p class="muted">Template library unavailable.</p>';
+        }
+    }
+
+    function renderLibraryIndustryOptions(industries) {
+        const current = el.libraryIndustry.value || '';
+        const normalized = [''].concat((industries || []).filter(Boolean));
+        el.libraryIndustry.innerHTML = '';
+        normalized.forEach((industry) => {
+            const option = document.createElement('option');
+            option.value = industry;
+            option.textContent = industry || 'All industries';
+            if (industry === current) {
+                option.selected = true;
+            }
+            el.libraryIndustry.appendChild(option);
+        });
+    }
+
+    function renderLibraryList() {
+        el.libraryList.innerHTML = '';
+        if (!state.libraryTemplates.length) {
+            el.libraryList.innerHTML = '<p class="muted">No templates match this filter.</p>';
+            return;
+        }
+
+        state.libraryTemplates.forEach((tpl) => {
+            const card = document.createElement('article');
+            card.className = 'library-item';
+
+            const title = document.createElement('h3');
+            title.textContent = tpl.name || 'Untitled template';
+            card.appendChild(title);
+
+            const meta = document.createElement('span');
+            meta.className = 'library-meta';
+            meta.textContent = (tpl.industry || 'General') + ' | ' + (tpl.source || 'curated');
+            card.appendChild(meta);
+
+            const desc = document.createElement('p');
+            desc.textContent = tpl.description || '';
+            card.appendChild(desc);
+
+            const actions = document.createElement('div');
+            actions.className = 'library-actions';
+
+            const applyBtn = document.createElement('button');
+            applyBtn.className = 'btn';
+            applyBtn.textContent = 'Apply Here';
+            applyBtn.addEventListener('click', function () {
+                applyLibraryTemplate(tpl, false).catch(console.error);
+            });
+            actions.appendChild(applyBtn);
+
+            const newBtn = document.createElement('button');
+            newBtn.className = 'btn';
+            newBtn.textContent = 'Apply New Doc';
+            newBtn.addEventListener('click', function () {
+                applyLibraryTemplate(tpl, true).catch(console.error);
+            });
+            actions.appendChild(newBtn);
+
+            card.appendChild(actions);
+            el.libraryList.appendChild(card);
+        });
+    }
+
+    async function applyLibraryTemplate(template, asNewDocument) {
+        if (!template || !template.markdown) {
+            return;
+        }
+        const templateVariables = Object.assign(
+            {
+                client_name: '',
+                project_name: template.name || 'Untitled SOW',
+                consultant_name: '',
+                date: today(),
+            },
+            template.variables || {}
+        );
+
+        if (asNewDocument) {
+            const doc = {
+                id: uid('doc'),
+                title: templateVariables.project_name || template.name || 'Untitled SOW',
+                clientId: '',
+                clausePack: state.currentDoc ? state.currentDoc.clausePack : 'US_BASE',
+                currentRevision: 1,
+                revisions: [{
+                    revision: 1,
+                    markdown: template.markdown,
+                    variables: templateVariables,
+                    templateId: 'modern',
+                    pageSize: 'Letter',
+                    status: 'draft',
+                    signatures: [],
+                    changeSummary: 'Created from template library',
+                    createdAt: nowIso(),
+                }],
+                createdAt: nowIso(),
+                updatedAt: nowIso(),
+            };
+            await dbPut(DOC_STORE, doc);
+            state.currentDoc = doc;
+            state.activeRevision = doc.currentRevision;
+            bindDocToUi();
+            renderDocList();
+            setSaveStatus('Created document from template library');
+            return;
+        }
+
+        const revision = ensureEditableCurrent();
+        if (!revision) {
+            return;
+        }
+        el.editor.value = template.markdown;
+        el.varInputs.forEach((input) => {
+            const key = input.dataset.var;
+            input.value = templateVariables[key] || '';
+        });
+        setRevisionFromUi(revision);
+        state.currentDoc.title = templateVariables.project_name || template.name || 'Untitled SOW';
+        el.docName.textContent = state.currentDoc.title;
+        updateCharCount();
+        renderPreview();
+        queueSave();
+    }
+
+    function resetSignatureCanvas() {
+        const canvas = el.signatureCanvas;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.lineWidth = 2.2;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#0f172a';
+        state.signatureCapture.hasStroke = false;
+    }
+
+    function openSignatureModal(role) {
+        state.signatureCapture.role = role;
+        state.signatureCapture.drawing = false;
+        state.signatureCapture.pointerId = null;
+        const defaultName = role === 'consultant'
+            ? (collectVariables().consultant_name || '')
+            : (collectVariables().client_name || '');
+        el.signatureName.value = defaultName;
+        el.signatureSubtitle.textContent = 'Signing as ' + role + '. Draw your signature below.';
+        resetSignatureCanvas();
+        el.signatureModal.classList.remove('hidden');
+    }
+
+    function closeSignatureModal() {
+        el.signatureModal.classList.add('hidden');
+        state.signatureCapture.role = null;
+    }
+
+    function canvasPosition(ev) {
+        const rect = el.signatureCanvas.getBoundingClientRect();
+        return {
+            x: (ev.clientX - rect.left) * (el.signatureCanvas.width / rect.width),
+            y: (ev.clientY - rect.top) * (el.signatureCanvas.height / rect.height),
+        };
+    }
+
+    function signaturePointerDown(ev) {
+        ev.preventDefault();
+        const pos = canvasPosition(ev);
+        const ctx = el.signatureCanvas.getContext('2d');
+        state.signatureCapture.drawing = true;
+        state.signatureCapture.pointerId = ev.pointerId;
+        state.signatureCapture.lastX = pos.x;
+        state.signatureCapture.lastY = pos.y;
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+    }
+
+    function signaturePointerMove(ev) {
+        if (!state.signatureCapture.drawing || state.signatureCapture.pointerId !== ev.pointerId) {
+            return;
+        }
+        ev.preventDefault();
+        const pos = canvasPosition(ev);
+        const ctx = el.signatureCanvas.getContext('2d');
+        ctx.beginPath();
+        ctx.moveTo(state.signatureCapture.lastX, state.signatureCapture.lastY);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+        state.signatureCapture.lastX = pos.x;
+        state.signatureCapture.lastY = pos.y;
+        state.signatureCapture.hasStroke = true;
+    }
+
+    function signaturePointerUp(ev) {
+        if (state.signatureCapture.pointerId !== ev.pointerId) {
+            return;
+        }
+        state.signatureCapture.drawing = false;
+        state.signatureCapture.pointerId = null;
     }
 
     function openDb() {
@@ -442,6 +826,11 @@ Date: {{date}}
     }
     function migrateDoc(doc) {
         if (doc.revisions && Array.isArray(doc.revisions)) {
+            doc.revisions = doc.revisions.map((rev) => {
+                const normalized = Object.assign({}, rev);
+                normalized.signatures = normalizeSignatures(rev.signatures);
+                return normalized;
+            });
             if (!doc.clausePack) {
                 doc.clausePack = 'US_BASE';
             }
@@ -611,6 +1000,7 @@ Date: {{date}}
             li.appendChild(btn);
             el.revisionList.appendChild(li);
         });
+        refreshCompareSelectors();
     }
 
     function renderDocList() {
@@ -876,27 +1266,43 @@ Date: {{date}}
             alert('This revision is already fully signed. Create a new revision to change it.');
             return;
         }
+        openSignatureModal(role);
+    }
 
-        const defaultName = role === 'consultant'
-            ? (collectVariables().consultant_name || '')
-            : (collectVariables().client_name || '');
-        const signerName = prompt('Enter signer name for ' + role + ':', defaultName);
-        if (!signerName) {
+    function acceptSignatureFromModal() {
+        const revision = getActiveRevision();
+        if (!revision || !state.signatureCapture.role) {
+            return;
+        }
+        if (!state.signatureCapture.hasStroke) {
+            alert('Draw a signature before accepting.');
             return;
         }
 
-        revision.signatures = revision.signatures.filter((sig) => sig.role !== role);
+        const signerName = (el.signatureName.value || '').trim();
+        if (!signerName) {
+            alert('Signer name is required.');
+            return;
+        }
+
+        const imageDataUrl = el.signatureCanvas.toDataURL('image/png');
+        const signatureHash = hashSignature(imageDataUrl + '|' + signerName + '|' + state.signatureCapture.role);
+
+        revision.signatures = revision.signatures.filter((sig) => sig.role !== state.signatureCapture.role);
         revision.signatures.push({
-            role: role,
-            signerName: signerName.trim(),
+            role: state.signatureCapture.role,
+            signerName: signerName,
             signedAt: nowIso(),
-            method: 'native_esign',
+            method: 'signature_pad',
+            imageDataUrl: imageDataUrl,
+            hash: signatureHash,
         });
 
         const hasConsultant = revision.signatures.some((sig) => sig.role === 'consultant');
         const hasClient = revision.signatures.some((sig) => sig.role === 'client');
         revision.status = hasConsultant && hasClient ? 'signed' : 'draft';
 
+        closeSignatureModal();
         renderPreview();
         syncStatusUi(revision);
         queueSave();
@@ -908,10 +1314,17 @@ Date: {{date}}
             return;
         }
 
+        const selectedBase = state.compare.baseRevision
+            ? getRevisionByNumber(state.currentDoc, state.compare.baseRevision)
+            : null;
+        const selectedTarget = state.compare.targetRevision
+            ? getRevisionByNumber(state.currentDoc, state.compare.targetRevision)
+            : null;
         const previousRevisionNumber = Math.max(1, state.currentDoc.currentRevision - 1);
-        const previousRevision = getRevisionByNumber(state.currentDoc, previousRevisionNumber) || revision;
-        const diff = summarizeTextDiff(previousRevision.markdown, revision.markdown);
-        const template = `\n## Change Order ${state.currentDoc.currentRevision}\n\n- Requested by:\n- Date: ${today()}\n- Scope Delta:\n- Schedule Impact:\n- Fee Impact:\n- Draft Diff Summary: +${diff.added} lines / -${diff.removed} lines versus Revision ${previousRevision.revision}\n\nApproved by written confirmation from both parties.\n`;
+        const previousRevision = selectedBase || getRevisionByNumber(state.currentDoc, previousRevisionNumber) || revision;
+        const targetRevision = selectedTarget || revision;
+        const diff = summarizeTextDiff(previousRevision.markdown, targetRevision.markdown);
+        const template = `\n## Change Order ${state.currentDoc.currentRevision}\n\n- Requested by:\n- Date: ${today()}\n- Scope Delta:\n- Schedule Impact:\n- Fee Impact:\n- Diff Baseline: Revision ${previousRevision.revision}\n- Diff Target: Revision ${targetRevision.revision}\n- Draft Diff Summary: +${diff.added} lines / -${diff.removed} lines\n\nApproved by written confirmation from both parties.\n`;
         el.editor.value += template;
         setRevisionFromUi(revision);
         renderPreview();
@@ -1357,6 +1770,30 @@ ${el.preview.innerHTML}
         el.btnChangeOrder.addEventListener('click', addChangeOrder);
         el.btnSignConsultant.addEventListener('click', function () { signRevision('consultant'); });
         el.btnSignClient.addEventListener('click', function () { signRevision('client'); });
+        el.btnCompare.addEventListener('click', renderComparison);
+        el.btnClearCompare.addEventListener('click', function () {
+            state.compare.baseRevision = null;
+            state.compare.targetRevision = null;
+            el.compareOutput.textContent = 'No comparison selected.';
+        });
+        el.librarySearch.addEventListener('input', function () {
+            loadLibraryTemplates().catch(console.error);
+        });
+        el.libraryIndustry.addEventListener('change', function () {
+            loadLibraryTemplates().catch(console.error);
+        });
+        el.btnSignatureClear.addEventListener('click', resetSignatureCanvas);
+        el.btnSignatureCancel.addEventListener('click', closeSignatureModal);
+        el.btnSignatureAccept.addEventListener('click', acceptSignatureFromModal);
+        el.signatureModal.addEventListener('click', function (event) {
+            if (event.target === el.signatureModal) {
+                closeSignatureModal();
+            }
+        });
+        el.signatureCanvas.addEventListener('pointerdown', signaturePointerDown);
+        el.signatureCanvas.addEventListener('pointermove', signaturePointerMove);
+        el.signatureCanvas.addEventListener('pointerup', signaturePointerUp);
+        el.signatureCanvas.addEventListener('pointercancel', signaturePointerUp);
 
         el.btnSaveClient.addEventListener('click', function () {
             saveClient().catch(console.error);
@@ -1390,6 +1827,10 @@ ${el.preview.innerHTML}
         el.btnSettings.addEventListener('click', configureSharing);
 
         document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && !el.signatureModal.classList.contains('hidden')) {
+                closeSignatureModal();
+                return;
+            }
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
                 event.preventDefault();
                 saveCurrentDoc().catch(console.error);
@@ -1410,6 +1851,8 @@ ${el.preview.innerHTML}
         renderDocList();
         setupEvents();
         syncSharingState();
+        await loadLibraryTemplates();
+        resetSignatureCanvas();
     }
 
     init().catch(function (err) {
