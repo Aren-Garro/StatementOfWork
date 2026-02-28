@@ -121,6 +121,7 @@ def test_template_library_query_matches_user_template(monkeypatch):
     assert payload["total"] >= 1
     assert any(item["source"] == "user" and "Acme Special SOW" in item["name"] for item in payload["templates"])
     assert all("templateId" in item for item in payload["templates"])
+    assert all("template_id" not in item for item in payload["templates"])
 
 
 def test_template_library_offset_pagination_returns_next_page(monkeypatch):

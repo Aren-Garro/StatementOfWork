@@ -261,7 +261,6 @@ def template_library():
                 'markdown': t.get('markdown', ''),
                 'variables': t.get('variables', {}),
                 'source': 'user',
-                'template_id': t.get('id'),
                 'templateId': t.get('pdf_template', 'modern'),
             }
         )

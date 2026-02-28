@@ -5,7 +5,6 @@
     const DB_NAME = 'sow_creator_db';
     const DB_VERSION = 3;
     const DOC_STORE = 'documents';
-    const TEMPLATE_STORE = 'templates';
     const CLIENT_STORE = 'clients';
     const CLAUSE_STORE = 'custom_clauses';
     const SAVE_DEBOUNCE_MS = 500;
@@ -978,9 +977,6 @@ Date: {{date}}
                 if (!db.objectStoreNames.contains(DOC_STORE)) {
                     db.createObjectStore(DOC_STORE, { keyPath: 'id' });
                 }
-                if (!db.objectStoreNames.contains(TEMPLATE_STORE)) {
-                    db.createObjectStore(TEMPLATE_STORE, { keyPath: 'id' });
-                }
                 if (!db.objectStoreNames.contains(CLIENT_STORE)) {
                     db.createObjectStore(CLIENT_STORE, { keyPath: 'id' });
                 }
@@ -1714,6 +1710,7 @@ Date: {{date}}
             exportedAt: nowIso(),
             doc: state.currentDoc,
             clients: state.clients,
+            customClauses: state.customClauses,
         };
         const filename = (state.currentDoc.title || 'sow').replace(/\s+/g, '_') + '.json';
         downloadFile(filename, JSON.stringify(packageObj, null, 2), 'application/json;charset=utf-8');
@@ -1793,9 +1790,17 @@ Date: {{date}}
                                 importSummary.clientsImported += 1;
                             }
                         }
+                        const pkgClauses = Array.isArray(pkg.customClauses) ? pkg.customClauses : [];
+                        for (let j = 0; j < pkgClauses.length; j += 1) {
+                            const clause = pkgClauses[j];
+                            if (clause && clause.id) {
+                                await dbPut(CLAUSE_STORE, clause);
+                            }
+                        }
                     }
                     if (firstDoc) {
                         state.clients = await dbGetAll(CLIENT_STORE);
+                        state.customClauses = await dbGetAll(CLAUSE_STORE);
                         state.currentDoc = firstDoc;
                         state.activeRevision = firstDoc.currentRevision;
                         bindDocToUi();
@@ -1823,8 +1828,17 @@ Date: {{date}}
                         }
                     }
                 }
+                if (Array.isArray(parsed.customClauses)) {
+                    for (let i = 0; i < parsed.customClauses.length; i += 1) {
+                        const clause = parsed.customClauses[i];
+                        if (clause && clause.id) {
+                            await dbPut(CLAUSE_STORE, clause);
+                        }
+                    }
+                }
 
                 state.clients = await dbGetAll(CLIENT_STORE);
+                state.customClauses = await dbGetAll(CLAUSE_STORE);
                 state.currentDoc = incomingDoc;
                 state.activeRevision = incomingDoc.currentRevision;
                 bindDocToUi();
