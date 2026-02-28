@@ -92,6 +92,63 @@ def _build_message(
     return msg
 
 
+def _attach_pdf_if_requested(
+    *,
+    msg: EmailMessage,
+    attach_pdf: bool,
+    html_content: str,
+    template_name: str,
+    page_size: str,
+    title: str,
+) -> None:
+    """Attach a rendered SOW PDF to message when requested."""
+    if attach_pdf:
+        try:
+            from app.pdf_engine import generate_pdf
+
+            pdf_bytes = generate_pdf(
+                html_content,
+                template_name=template_name,
+                page_size=page_size,
+            )
+        except ModuleNotFoundError as exc:
+            raise EmailConfigError("PDF export dependency not installed") from exc
+
+        safe_name = title.replace(" ", "_") or "proposal"
+        msg.add_attachment(
+            pdf_bytes,
+            maintype="application",
+            subtype="pdf",
+            filename=f"{safe_name}_SOW.pdf",
+        )
+
+
+def _send_message(*, settings: dict, msg: EmailMessage) -> None:
+    """Send an email via configured SMTP transport."""
+    if settings["use_ssl"]:
+        server = smtplib.SMTP_SSL(
+            settings["host"],
+            settings["port"],
+            timeout=settings["timeout_seconds"],
+        )
+    else:
+        server = smtplib.SMTP(
+            settings["host"],
+            settings["port"],
+            timeout=settings["timeout_seconds"],
+        )
+
+    try:
+        with server:
+            if settings["use_starttls"] and not settings["use_ssl"]:
+                server.starttls()
+            if settings["username"]:
+                server.login(settings["username"], settings["password"])
+            server.send_message(msg)
+    except Exception as exc:  # pragma: no cover - mapped behavior is tested
+        raise EmailSendError(f"Failed to send email: {exc}") from exc
+
+
 def send_published_doc_email(
     *,
     to_email: str,
@@ -119,48 +176,15 @@ def send_published_doc_email(
         signed=signed,
         from_display=from_display,
     )
-
-    if attach_pdf:
-        try:
-            from app.pdf_engine import generate_pdf
-
-            pdf_bytes = generate_pdf(
-                html_content,
-                template_name=template_name,
-                page_size=page_size,
-            )
-        except ModuleNotFoundError as exc:
-            raise EmailConfigError("PDF export dependency not installed") from exc
-
-        safe_name = title.replace(" ", "_") or "proposal"
-        msg.add_attachment(
-            pdf_bytes,
-            maintype="application",
-            subtype="pdf",
-            filename=f"{safe_name}_SOW.pdf",
-        )
-
-    try:
-        if settings["use_ssl"]:
-            server = smtplib.SMTP_SSL(
-                settings["host"],
-                settings["port"],
-                timeout=settings["timeout_seconds"],
-            )
-        else:
-            server = smtplib.SMTP(
-                settings["host"],
-                settings["port"],
-                timeout=settings["timeout_seconds"],
-            )
-        with server:
-            if settings["use_starttls"] and not settings["use_ssl"]:
-                server.starttls()
-            if settings["username"]:
-                server.login(settings["username"], settings["password"])
-            server.send_message(msg)
-    except Exception as exc:  # pragma: no cover - mapped behavior is tested
-        raise EmailSendError(f"Failed to send email: {exc}") from exc
+    _attach_pdf_if_requested(
+        msg=msg,
+        attach_pdf=attach_pdf,
+        html_content=html_content,
+        template_name=template_name,
+        page_size=page_size,
+        title=title,
+    )
+    _send_message(settings=settings, msg=msg)
 
     return {
         "to_email": to_email,
