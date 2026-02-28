@@ -20,6 +20,40 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _ensure_allowed(value: str, allowed_values: set[str], field_name: str) -> None:
+    if value not in allowed_values:
+        raise ServiceError(f'invalid {field_name}', 400)
+
+
+def _validate_publish_inputs(
+    *,
+    sanitized_html: str,
+    revision: int | None,
+    signed: bool,
+    signed_only: bool,
+    jurisdiction: str,
+    template: str,
+    page_size: str,
+    allowed_jurisdictions: set[str],
+    allowed_templates: set[str],
+    allowed_page_sizes: set[str],
+) -> None:
+    if not sanitized_html:
+        raise ServiceError('html is required', 400)
+    if signed_only and not signed:
+        raise ServiceError('signed_only publish requires signed=true', 400)
+    if revision is not None and revision < 1:
+        raise ServiceError('revision must be >= 1 when provided', 400)
+
+    _ensure_allowed(jurisdiction, allowed_jurisdictions, 'jurisdiction')
+    _ensure_allowed(template, allowed_templates, 'template')
+    _ensure_allowed(page_size, allowed_page_sizes, 'page_size')
+
+
+def _bounded_expiry_days(expires_in_days: int) -> int:
+    return max(1, min(365, expires_in_days))
+
+
 def create_published_document(
     *,
     db,
@@ -37,20 +71,20 @@ def create_published_document(
     allowed_page_sizes: set[str],
 ) -> dict:
     """Validate and persist a published document."""
-    if not sanitized_html:
-        raise ServiceError('html is required', 400)
-    if signed_only and not signed:
-        raise ServiceError('signed_only publish requires signed=true', 400)
-    if revision is not None and revision < 1:
-        raise ServiceError('revision must be >= 1 when provided', 400)
-    if jurisdiction not in allowed_jurisdictions:
-        raise ServiceError('invalid jurisdiction', 400)
-    if template not in allowed_templates:
-        raise ServiceError('invalid template', 400)
-    if page_size not in allowed_page_sizes:
-        raise ServiceError('invalid page_size', 400)
+    _validate_publish_inputs(
+        sanitized_html=sanitized_html,
+        revision=revision,
+        signed=signed,
+        signed_only=signed_only,
+        jurisdiction=jurisdiction,
+        template=template,
+        page_size=page_size,
+        allowed_jurisdictions=allowed_jurisdictions,
+        allowed_templates=allowed_templates,
+        allowed_page_sizes=allowed_page_sizes,
+    )
 
-    expires_in_days = max(1, min(365, expires_in_days))
+    expires_in_days = _bounded_expiry_days(expires_in_days)
     publish_id = secrets.token_urlsafe(8)
     now = utc_now()
     expires_at = now + timedelta(days=expires_in_days)
