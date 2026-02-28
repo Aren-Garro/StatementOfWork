@@ -10,6 +10,7 @@
     const SAVE_DEBOUNCE_MS = 500;
     const SEARCH_DEBOUNCE_MS = 220;
     const PREVIEW_DEBOUNCE_MS = 140;
+    const SUPPORTED_LOCALES = ['en', 'es', 'fr'];
 
     const CLAUSE_MARKER_START = '<!-- CLAUSE_PACK_START -->';
     const CLAUSE_MARKER_END = '<!-- CLAUSE_PACK_END -->';
@@ -78,7 +79,8 @@
         { key: 'signatures', label: 'Signature block', test: (t) => t.includes(':::signature') || t.includes('## signatures') },
     ];
 
-    const SAMPLE_MARKDOWN = `# {{project_name}}
+    const SAMPLE_MARKDOWN_BY_LOCALE = {
+        en: `# {{project_name}}
 ## Statement of Work
 
 **Prepared for:** {{client_name}}
@@ -142,12 +144,213 @@ Date: {{date}}
 Consultant: {{consultant_name}}
 Date: {{date}}
 :::
-`;
+`,
+        es: `# {{project_name}}
+## Declaracion de Trabajo
+
+**Preparado para:** {{client_name}}
+**Preparado por:** {{consultant_name}}
+**Fecha:** {{date}}
+
+---
+
+## Alcance
+
+### Incluido
+- Descubrimiento y planificacion
+- Implementacion
+- QA y soporte de lanzamiento
+
+### Fuera de alcance
+- Mantenimiento continuo mas alla de 14 dias
+
+## Entregables
+
+- Resumen de requisitos
+- Implementacion funcional
+- Lista de verificacion de lanzamiento
+
+## Cronograma
+
+:::timeline
+- Semana 1-2: Descubrimiento
+- Semana 3-6: Implementacion
+- Semana 7: QA y lanzamiento
+:::
+
+## Criterios de Aceptacion
+
+- Requisitos principales implementados como se describio
+- Defectos por encima de severidad-2 resueltos antes de la aceptacion final
+
+## Terminos de Pago
+
+- 30% de anticipo para iniciar
+- 40% al completar implementacion
+- 30% en la aceptacion final
+
+## Orden de Cambio
+
+Cualquier cambio de alcance requiere aprobacion escrita con ajustes de cronograma y tarifas.
+
+:::pricing
+| Fase | Horas | Tarifa | Total |
+|---|---:|---:|---:|
+| Descubrimiento | 8 | $150 | $1200 |
+| Construccion | 40 | $150 | $6000 |
+| QA | 12 | $150 | $1800 |
+| **Total** | **60** |  | **$9000** |
+:::
+
+:::signature
+Cliente: {{client_name}}
+Fecha: {{date}}
+---
+Consultor: {{consultant_name}}
+Fecha: {{date}}
+:::
+`,
+        fr: `# {{project_name}}
+## Statement des Travaux
+
+**Prepare pour:** {{client_name}}
+**Prepare par:** {{consultant_name}}
+**Date:** {{date}}
+
+---
+
+## Portee
+
+### Inclus
+- Decouverte et planification
+- Mise en oeuvre
+- QA et support de lancement
+
+### Hors Portee
+- Maintenance continue au-dela de 14 jours
+
+## Livrables
+
+- Resume des exigences
+- Mise en oeuvre fonctionnelle
+- Checklist de lancement
+
+## Calendrier
+
+:::timeline
+- Semaine 1-2: Decouverte
+- Semaine 3-6: Mise en oeuvre
+- Semaine 7: QA et lancement
+:::
+
+## Criteres d'Acceptation
+
+- Exigences principales implementees comme decrit
+- Defauts au-dessus de severite-2 resolus avant acceptation finale
+
+## Conditions de Paiement
+
+- 30% d'acompte pour commencer
+- 40% a la fin de la mise en oeuvre
+- 30% a l'acceptation finale
+
+## Ordre de Changement
+
+Tout changement de portee requiert une approbation ecrite avec ajustement du calendrier et des frais.
+
+:::pricing
+| Phase | Heures | Tarif | Total |
+|---|---:|---:|---:|
+| Decouverte | 8 | $150 | $1200 |
+| Build | 40 | $150 | $6000 |
+| QA | 12 | $150 | $1800 |
+| **Total** | **60** |  | **$9000** |
+:::
+
+:::signature
+Client: {{client_name}}
+Date: {{date}}
+---
+Consultant: {{consultant_name}}
+Date: {{date}}
+:::
+`,
+    };
+
+    const I18N = {
+        en: {
+            btn_new: 'New',
+            btn_new_revision: 'New Revision',
+            btn_save: 'Save',
+            btn_change_order: 'Change Order',
+            btn_sign_consultant: 'Sign as Consultant',
+            btn_sign_client: 'Sign as Client',
+            btn_export: 'Print / PDF',
+            btn_export_md: 'Export .md',
+            btn_export_json: 'Export .json',
+            btn_import: 'Import',
+            btn_settings: 'Sharing',
+            btn_publish: 'Publish',
+            compare_none: 'No comparison selected.',
+            save_signed_locked: 'Signed revisions are locked. Create a new revision to edit.',
+            save_viewing_previous: 'Viewing previous revision (read-only).',
+            ready_sign_export: 'Ready to sign and export',
+            no_client_selected: 'No client selected',
+            new_custom_clause: 'New custom clause',
+            signature_as: 'Signing as {role}. Draw your signature below.',
+            library_search_placeholder: 'Search templates',
+        },
+        es: {
+            btn_new: 'Nuevo',
+            btn_new_revision: 'Nueva Revision',
+            btn_save: 'Guardar',
+            btn_change_order: 'Orden de Cambio',
+            btn_sign_consultant: 'Firmar como Consultor',
+            btn_sign_client: 'Firmar como Cliente',
+            btn_export: 'Imprimir / PDF',
+            btn_export_md: 'Exportar .md',
+            btn_export_json: 'Exportar .json',
+            btn_import: 'Importar',
+            btn_settings: 'Compartir',
+            btn_publish: 'Publicar',
+            compare_none: 'Sin comparacion seleccionada.',
+            save_signed_locked: 'Las revisiones firmadas estan bloqueadas. Cree una nueva revision para editar.',
+            save_viewing_previous: 'Viendo revision anterior (solo lectura).',
+            ready_sign_export: 'Listo para firmar y exportar',
+            no_client_selected: 'Ningun cliente seleccionado',
+            new_custom_clause: 'Nueva clausula personalizada',
+            signature_as: 'Firmando como {role}. Dibuje su firma abajo.',
+            library_search_placeholder: 'Buscar plantillas',
+        },
+        fr: {
+            btn_new: 'Nouveau',
+            btn_new_revision: 'Nouvelle Revision',
+            btn_save: 'Enregistrer',
+            btn_change_order: 'Ordre de Changement',
+            btn_sign_consultant: 'Signer comme Consultant',
+            btn_sign_client: 'Signer comme Client',
+            btn_export: 'Imprimer / PDF',
+            btn_export_md: 'Exporter .md',
+            btn_export_json: 'Exporter .json',
+            btn_import: 'Importer',
+            btn_settings: 'Partage',
+            btn_publish: 'Publier',
+            compare_none: 'Aucune comparaison selectionnee.',
+            save_signed_locked: 'Les revisions signees sont verrouillees. Creez une nouvelle revision pour modifier.',
+            save_viewing_previous: 'Affichage d une revision precedente (lecture seule).',
+            ready_sign_export: 'Pret a signer et exporter',
+            no_client_selected: 'Aucun client selectionne',
+            new_custom_clause: 'Nouvelle clause personnalisee',
+            signature_as: 'Signature en tant que {role}. Dessinez votre signature ci-dessous.',
+            library_search_placeholder: 'Rechercher des modeles',
+        },
+    };
 
     const state = {
         db: null,
         currentDoc: null,
         lastDocId: null,
+        locale: 'en',
         activeRevision: null,
         clients: [],
         customClauses: [],
@@ -191,6 +394,7 @@ Date: {{date}}
         btnCompare: document.getElementById('btn-compare'),
         btnClearCompare: document.getElementById('btn-clear-compare'),
         compareOutput: document.getElementById('compare-output'),
+        languageSelect: document.getElementById('language-select'),
         templateSelect: document.getElementById('template-select'),
         pageSize: document.getElementById('page-size'),
         clausePack: document.getElementById('clause-pack'),
@@ -233,6 +437,55 @@ Date: {{date}}
 
     function uid(prefix) {
         return (prefix || 'id') + '_' + Math.random().toString(36).slice(2, 11);
+    }
+
+    function currentLocale() {
+        return SUPPORTED_LOCALES.includes(state.locale) ? state.locale : 'en';
+    }
+
+    function t(key, replacements) {
+        const locale = currentLocale();
+        const catalog = I18N[locale] || I18N.en;
+        const fallback = I18N.en[key] || key;
+        let text = catalog[key] || fallback;
+        if (replacements) {
+            Object.keys(replacements).forEach((token) => {
+                text = text.replaceAll('{' + token + '}', replacements[token]);
+            });
+        }
+        return text;
+    }
+
+    function getSampleMarkdown() {
+        return SAMPLE_MARKDOWN_BY_LOCALE[currentLocale()] || SAMPLE_MARKDOWN_BY_LOCALE.en;
+    }
+
+    function applyLocaleToUi() {
+        el.btnNew.textContent = t('btn_new');
+        el.btnNewRevision.textContent = t('btn_new_revision');
+        el.btnSave.textContent = t('btn_save');
+        el.btnChangeOrder.textContent = t('btn_change_order');
+        el.btnSignConsultant.textContent = t('btn_sign_consultant');
+        el.btnSignClient.textContent = t('btn_sign_client');
+        el.btnExport.textContent = t('btn_export');
+        el.btnExportMd.textContent = t('btn_export_md');
+        el.btnExportJson.textContent = t('btn_export_json');
+        el.btnImport.textContent = t('btn_import');
+        el.btnSettings.textContent = t('btn_settings');
+        el.btnPublish.textContent = t('btn_publish');
+        el.librarySearch.placeholder = t('library_search_placeholder');
+    }
+
+    function setLocale(locale) {
+        state.locale = SUPPORTED_LOCALES.includes(locale) ? locale : 'en';
+        localStorage.setItem('ui_locale', state.locale);
+        if (el.languageSelect) {
+            el.languageSelect.value = state.locale;
+        }
+        applyLocaleToUi();
+        renderClientSelect();
+        renderCustomClauseSelect();
+        clearComparison();
     }
 
     function nowIso() {
@@ -694,7 +947,7 @@ Date: {{date}}
     function clearComparison() {
         state.compare.baseRevision = null;
         state.compare.targetRevision = null;
-        el.compareOutput.textContent = 'No comparison selected.';
+        el.compareOutput.textContent = t('compare_none');
     }
 
     function refreshCompareSelectors() {
@@ -939,7 +1192,7 @@ Date: {{date}}
             ? (collectVariables().consultant_name || '')
             : (collectVariables().client_name || '');
         el.signatureName.value = defaultName;
-        el.signatureSubtitle.textContent = 'Signing as ' + role + '. Draw your signature below.';
+        el.signatureSubtitle.textContent = t('signature_as', { role: role });
         resizeSignatureCanvas();
         resetSignatureCanvas();
         el.signatureModal.classList.remove('hidden');
@@ -1062,7 +1315,7 @@ Date: {{date}}
 
         const revision = {
             revision: 1,
-            markdown: doc.markdown || SAMPLE_MARKDOWN,
+            markdown: doc.markdown || getSampleMarkdown(),
             variables: doc.variables || {
                 client_name: '',
                 project_name: 'Untitled SOW',
@@ -1106,7 +1359,7 @@ Date: {{date}}
             revisions: [
                 {
                     revision: 1,
-                    markdown: SAMPLE_MARKDOWN,
+                    markdown: getSampleMarkdown(),
                     variables: {
                         client_name: 'Acme Corp',
                         project_name: 'Website Redesign',
@@ -1161,8 +1414,8 @@ Date: {{date}}
         el.editor.readOnly = readOnly;
         if (readOnly) {
             el.saveStatus.textContent = revision.status === 'signed'
-                ? 'Signed revisions are locked. Create a new revision to edit.'
-                : 'Viewing previous revision (read-only).';
+                ? t('save_signed_locked')
+                : t('save_viewing_previous');
         }
     }
 
@@ -1195,7 +1448,7 @@ Date: {{date}}
         if (missing === 0) {
             const allGood = document.createElement('li');
             allGood.className = 'guardrail-ok';
-            allGood.textContent = 'Ready to sign and export';
+            allGood.textContent = t('ready_sign_export');
             el.guardrailList.appendChild(allGood);
         }
     }
@@ -1334,7 +1587,7 @@ Date: {{date}}
 
     function renderClientSelect() {
         const currentId = state.currentDoc ? (state.currentDoc.clientId || '') : '';
-        el.clientSelect.innerHTML = '<option value="">No client selected</option>';
+        el.clientSelect.innerHTML = '<option value="">' + t('no_client_selected') + '</option>';
         state.clients.sort((a, b) => (a.legalName || '').localeCompare(b.legalName || '')).forEach((client) => {
             const option = document.createElement('option');
             option.value = client.id;
@@ -1362,7 +1615,7 @@ Date: {{date}}
 
     function renderCustomClauseSelect() {
         const currentId = el.customClauseSelect.value || '';
-        el.customClauseSelect.innerHTML = '<option value="">New custom clause</option>';
+        el.customClauseSelect.innerHTML = '<option value="">' + t('new_custom_clause') + '</option>';
         state.customClauses
             .slice()
             .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
@@ -1946,7 +2199,7 @@ Date: {{date}}
             currentRevision: 1,
             revisions: [{
                 revision: 1,
-                markdown: SAMPLE_MARKDOWN,
+                markdown: getSampleMarkdown(),
                 variables: {
                     client_name: '',
                     project_name: 'Untitled SOW',
@@ -2049,6 +2302,8 @@ ${el.preview.innerHTML}
                 signed_only: revision ? revision.status === 'signed' : false,
                 signed: revision ? revision.status === 'signed' : false,
                 jurisdiction: state.currentDoc ? state.currentDoc.clausePack : 'US_BASE',
+                template: el.templateSelect.value || 'modern',
+                page_size: el.pageSize.value || 'Letter',
             }),
         });
 
@@ -2059,7 +2314,55 @@ ${el.preview.innerHTML}
             return;
         }
 
+        const shouldSendEmail = window.confirm('Published successfully. Send email to the client now?');
+        if (shouldSendEmail) {
+            await promptAndSendPublishedEmail(baseUrl.replace(/\/$/, ''), payload).catch(function (err) {
+                console.error(err);
+                alert('Email send failed.');
+            });
+        }
         prompt('Published link (expires in 30 days):', payload.view_url);
+    }
+
+    async function promptAndSendPublishedEmail(basePluginUrl, publishPayload) {
+        const defaultRecipient = (el.clientEmail.value || '').trim();
+        const toEmail = prompt('Recipient email:', defaultRecipient);
+        if (toEmail === null) {
+            return;
+        }
+        const normalizedEmail = toEmail.trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
+            alert('Please enter a valid recipient email.');
+            return;
+        }
+
+        const defaultSubject = 'Statement of Work: ' + (collectVariables().project_name || 'Statement of Work');
+        const subject = prompt('Email subject:', defaultSubject);
+        if (subject === null) {
+            return;
+        }
+        const message = prompt('Optional message (leave blank for none):', '') || '';
+        const attachPdf = window.confirm('Attach PDF to the email? Click Cancel for link-only email.');
+
+        const response = await fetch(
+            basePluginUrl + '/v1/p/' + encodeURIComponent(publishPayload.publish_id) + '/email',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to_email: normalizedEmail,
+                    subject: subject.trim() || defaultSubject,
+                    message: message.trim(),
+                    attach_pdf: attachPdf,
+                }),
+            }
+        );
+        const payload = await response.json();
+        if (!response.ok) {
+            alert(payload.error || 'Email send failed');
+            return;
+        }
+        alert('Email sent to ' + payload.to_email + (payload.attached_pdf ? ' with PDF attachment.' : '.'));
     }
 
     function configureSharing() {
@@ -2171,6 +2474,9 @@ ${el.preview.innerHTML}
         el.btnClearCompare.addEventListener('click', clearComparison);
         el.compareBase.addEventListener('change', renderComparison);
         el.compareTarget.addEventListener('change', renderComparison);
+        el.languageSelect.addEventListener('change', function () {
+            setLocale(el.languageSelect.value);
+        });
         el.librarySearch.addEventListener('input', function () {
             scheduleLibraryRefresh();
         });
@@ -2250,11 +2556,20 @@ ${el.preview.innerHTML}
     }
 
     async function init() {
+        state.locale = (localStorage.getItem('ui_locale') || 'en').trim().toLowerCase();
+        if (!SUPPORTED_LOCALES.includes(state.locale)) {
+            state.locale = 'en';
+        }
         state.db = await openDb();
         state.clients = await dbGetAll(CLIENT_STORE);
         state.customClauses = await dbGetAll(CLAUSE_STORE);
         state.currentDoc = await ensureSeedDocument();
         state.activeRevision = state.currentDoc.currentRevision;
+        applyLocaleToUi();
+        if (el.languageSelect) {
+            el.languageSelect.value = state.locale;
+        }
+        clearComparison();
         bindDocToUi();
         renderDocList();
         setupEvents();

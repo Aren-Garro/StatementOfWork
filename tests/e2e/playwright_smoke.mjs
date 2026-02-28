@@ -36,6 +36,7 @@ test("local-first signing and export controls render", async ({ page }) => {
 test("new library, compare, and signature modal controls render", async ({ page }) => {
   await page.goto("http://127.0.0.1:5000/");
 
+  await expect(page.locator("#language-select")).toBeVisible();
   await expect(page.locator("#library-search")).toBeVisible();
   await expect(page.locator("#library-industry")).toBeVisible();
   await expect(page.locator("#library-list")).toBeVisible();
@@ -56,6 +57,9 @@ test("new library, compare, and signature modal controls render", async ({ page 
 
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.locator("#signature-modal")).toBeHidden();
+
+  await page.selectOption("#language-select", "es");
+  await expect(page.getByRole("button", { name: "Nuevo" })).toBeVisible();
 });
 
 test("compare view renders and signature capture can be accepted", async ({ page }) => {

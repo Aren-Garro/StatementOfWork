@@ -100,11 +100,15 @@ Unlike commercial tools that charge per published document, this plugin is compl
 ### Endpoints
 
 - **`POST /plugin/v1/publish`**
-  - Body: `{ "title": "...", "html": "...", "expires_in_days": 30, "revision": 2, "signed": true, "signed_only": true, "jurisdiction": "US_NY" }`
-  - Returns: `publish_id`, `view_url`, `expires_at`, `revision`, `signed`, `jurisdiction`, `sanitized`
+  - Body: `{ "title": "...", "html": "...", "expires_in_days": 30, "revision": 2, "signed": true, "signed_only": true, "jurisdiction": "US_NY", "template": "modern", "page_size": "Letter" }`
+  - Returns: `publish_id`, `view_url`, `expires_at`, `revision`, `signed`, `jurisdiction`, `template`, `page_size`, `sanitized`
   
 - **`GET /plugin/v1/p/<publish_id>`**
   - Returns publish metadata
+
+- **`POST /plugin/v1/p/<publish_id>/email`**
+  - Body: `{ "to_email": "client@example.com", "subject": "Statement of Work: ...", "message": "Optional note", "attach_pdf": true }`
+  - Sends link-based delivery email with optional PDF attachment via SMTP
   
 - **`DELETE /plugin/v1/p/<publish_id>`**
   - Soft-deletes a published document
@@ -134,6 +138,18 @@ Built-in protection without enterprise pricing:
 ## Environment Variables
 
 See `.env.example` for configuration defaults.
+
+Email delivery (SMTP) requires:
+
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_FROM_EMAIL`
+- `SMTP_FROM_NAME`
+- `SMTP_USE_STARTTLS`
+- `SMTP_USE_SSL`
+- `SMTP_TIMEOUT_SECONDS`
 
 ## Development & Quality
 
@@ -238,11 +254,11 @@ Deploy on your own server or cloud platform:
 
 - [x] Additional jurisdiction packs (EU, UK, Canada, Australia)
 - [x] Enhanced template gallery with industry-specific examples
-- [ ] Multi-language support for international consultants
+- [x] Multi-language support for international consultants
 - [x] Advanced pricing table calculations (discounts, taxes)
 - [x] Gantt chart integration for timeline visualization
 - [x] Custom clause library builder UI
-- [ ] Email integration for direct client delivery
+- [x] Email integration for direct client delivery
 - [x] Mobile-responsive signature capture
 
 ### How to Contribute
