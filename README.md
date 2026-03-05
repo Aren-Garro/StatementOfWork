@@ -91,6 +91,36 @@ python run.py
 
 Then open `http://localhost:5000`.
 
+## First 10 Minutes (Recommended)
+
+1. Launch the app with `python scripts/bootstrap_desktop.py`.
+2. Create or select a document in **Local Documents**.
+3. Fill **Variables** (`client_name`, `project_name`, `consultant_name`, `date`).
+4. Choose a clause pack in **Clause Pack** and click **Insert / Update Clauses**.
+5. Review **Guardrails** and resolve missing sections.
+6. Save (`Ctrl+S`) and export:
+   - **Print** for print dialog
+   - **Download PDF** for direct file export
+7. Optional: click **Publish** to create a read-only share link.
+
+## UI Guide (Ease of Use)
+
+### Navigation
+- Use the **panel finder** at the top of the left sidebar to quickly jump to panels (type `/` to focus it).
+- Use **Collapse All / Expand All** for a cleaner workspace.
+- Sidebar panel open/closed state is remembered.
+
+### Quick Actions
+- Bottom-right quick bar includes: **Save**, **Print**, **PDF**, **Share**.
+- Non-blocking toast messages show success/errors without interrupting editing.
+
+### Keyboard Shortcuts
+- `Ctrl+S`: Save current document
+- `Ctrl+E`: Print view
+- `/`: Focus sidebar panel finder
+- `Esc`: Close open modal/dialog
+- You can also open the **Shortcuts** button in the top toolbar.
+
 ## First-Run Setup Wizard
 
 On first launch, the app opens a setup wizard that configures:
@@ -114,6 +144,8 @@ Mutation endpoints (`/api/setup/save`, plugin email/delete/cleanup) support auth
 - `Authorization: Bearer <token>`
 
 Set `PLUGIN_AUTH_TOKEN` for shared/non-local deployments.
+
+If running local-only, you can leave plugin auth token blank and skip sharing setup.
 
 ## Core Architecture
 
@@ -205,6 +237,10 @@ Optional MSI (requires WiX v4 CLI `wix`):
 ```
 
 Output: `dist/SOWCreator.msi`
+
+`build_msi.ps1` supports:
+- WiX v4 CLI (`wix`) when available
+- WiX v3 (`candle` + `light`) fallback
 
 ## Development & Quality
 
