@@ -729,6 +729,26 @@ kbd {
     flex: 1;
 }
 
+#email-modal label {
+    display: block;
+    font-size: 0.82rem;
+    margin-bottom: 0.45rem;
+}
+
+#email-modal input[type='email'],
+#email-modal input[type='text'],
+#email-modal textarea {
+    width: 100%;
+    margin-top: 0.2rem;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+}
+
+#email-modal textarea {
+    resize: vertical;
+}
+
 .setup-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

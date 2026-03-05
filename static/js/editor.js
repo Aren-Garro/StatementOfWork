@@ -410,6 +410,10 @@ Date: {{date}}
             completed: false,
             authToken: '',
         },
+        uiModal: {
+            confirmResolver: null,
+            emailResolver: null,
+        },
         sidebar: {
             filter: '',
             collapsed: {},
@@ -498,6 +502,18 @@ Date: {{date}}
         setupModal: document.getElementById('setup-modal'),
         shortcutsModal: document.getElementById('shortcuts-modal'),
         btnShortcutsClose: document.getElementById('btn-shortcuts-close'),
+        confirmModal: document.getElementById('confirm-modal'),
+        confirmTitle: document.getElementById('confirm-title'),
+        confirmMessage: document.getElementById('confirm-message'),
+        btnConfirmCancel: document.getElementById('btn-confirm-cancel'),
+        btnConfirmAccept: document.getElementById('btn-confirm-accept'),
+        emailModal: document.getElementById('email-modal'),
+        emailTo: document.getElementById('email-to'),
+        emailSubject: document.getElementById('email-subject'),
+        emailMessage: document.getElementById('email-message'),
+        emailAttachPdf: document.getElementById('email-attach-pdf'),
+        btnEmailCancel: document.getElementById('btn-email-cancel'),
+        btnEmailSend: document.getElementById('btn-email-send'),
         setupStatus: document.getElementById('setup-status'),
         setupPluginUrl: document.getElementById('setup-plugin-url'),
         setupPluginAuthToken: document.getElementById('setup-plugin-auth-token'),
@@ -602,6 +618,149 @@ Date: {{date}}
         const ok = document.execCommand('copy');
         input.remove();
         return ok;
+    }
+
+    function normalizeRequestError(err, fallback) {
+        if (err && typeof err === 'object' && err.name === 'AbortError') {
+            return err;
+        }
+        const message = (err && err.message) ? err.message : (fallback || 'Request failed');
+        const normalized = new Error(message);
+        if (err && typeof err === 'object') {
+            normalized.status = err.status;
+            normalized.payload = err.payload;
+            normalized.name = err.name || normalized.name;
+        }
+        return normalized;
+    }
+
+    async function requestJson(url, options) {
+        const requestOptions = Object.assign({}, options || {});
+        const timeoutMs = Number(requestOptions.timeoutMs || 10000);
+        delete requestOptions.timeoutMs;
+
+        let timeoutId = null;
+        let timeoutController = null;
+        if (!requestOptions.signal && timeoutMs > 0) {
+            timeoutController = new AbortController();
+            requestOptions.signal = timeoutController.signal;
+            timeoutId = window.setTimeout(function () {
+                timeoutController.abort();
+            }, timeoutMs);
+        }
+
+        try {
+            const response = await fetch(url, requestOptions);
+            let payload = null;
+            try {
+                payload = await response.json();
+            } catch (_) {
+                payload = null;
+            }
+            if (!response.ok) {
+                const err = new Error((payload && payload.error) || ('Request failed (' + response.status + ')'));
+                err.status = response.status;
+                err.payload = payload;
+                throw err;
+            }
+            return payload || {};
+        } catch (err) {
+            throw normalizeRequestError(err);
+        } finally {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+            }
+        }
+    }
+
+    async function requestBlob(url, options) {
+        const requestOptions = Object.assign({}, options || {});
+        const timeoutMs = Number(requestOptions.timeoutMs || 15000);
+        delete requestOptions.timeoutMs;
+        let timeoutId = null;
+        let timeoutController = null;
+        if (!requestOptions.signal && timeoutMs > 0) {
+            timeoutController = new AbortController();
+            requestOptions.signal = timeoutController.signal;
+            timeoutId = window.setTimeout(function () {
+                timeoutController.abort();
+            }, timeoutMs);
+        }
+
+        try {
+            const response = await fetch(url, requestOptions);
+            if (!response.ok) {
+                let payload = null;
+                try {
+                    payload = await response.json();
+                } catch (_) {
+                    payload = null;
+                }
+                const err = new Error((payload && payload.error) || ('Request failed (' + response.status + ')'));
+                err.status = response.status;
+                err.payload = payload;
+                throw err;
+            }
+            return response.blob();
+        } catch (err) {
+            throw normalizeRequestError(err);
+        } finally {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+            }
+        }
+    }
+
+    function closeConfirmModal(accepted) {
+        if (el.confirmModal) {
+            el.confirmModal.classList.add('hidden');
+        }
+        const resolver = state.uiModal.confirmResolver;
+        state.uiModal.confirmResolver = null;
+        if (resolver) {
+            resolver(Boolean(accepted));
+        }
+    }
+
+    function openConfirmModal(config) {
+        if (!el.confirmModal) {
+            return Promise.resolve(true);
+        }
+        const cfg = config || {};
+        el.confirmTitle.textContent = cfg.title || 'Confirm Action';
+        el.confirmMessage.textContent = cfg.message || 'Are you sure you want to continue?';
+        el.btnConfirmAccept.textContent = cfg.confirmLabel || 'Continue';
+        el.btnConfirmCancel.textContent = cfg.cancelLabel || 'Cancel';
+        el.confirmModal.classList.remove('hidden');
+        return new Promise((resolve) => {
+            state.uiModal.confirmResolver = resolve;
+        });
+    }
+
+    function closeEmailModal(result) {
+        if (el.emailModal) {
+            el.emailModal.classList.add('hidden');
+        }
+        const resolver = state.uiModal.emailResolver;
+        state.uiModal.emailResolver = null;
+        if (resolver) {
+            resolver(result || null);
+        }
+    }
+
+    function openEmailModal(defaults) {
+        if (!el.emailModal) {
+            return Promise.resolve(null);
+        }
+        const cfg = defaults || {};
+        el.emailTo.value = cfg.toEmail || '';
+        el.emailSubject.value = cfg.subject || '';
+        el.emailMessage.value = cfg.message || '';
+        el.emailAttachPdf.checked = cfg.attachPdf !== false;
+        el.emailModal.classList.remove('hidden');
+        return new Promise((resolve) => {
+            state.uiModal.emailResolver = resolve;
+        });
     }
 
     function applyLocaleToUi() {
@@ -735,6 +894,49 @@ Date: {{date}}
                 firstInvoiceSentAt: null,
             };
         }
+    }
+
+    function normalizeAndValidateCurrentDoc(doc) {
+        if (!doc || typeof doc !== 'object') {
+            return false;
+        }
+        if (!Array.isArray(doc.revisions) || doc.revisions.length === 0) {
+            return false;
+        }
+        normalizeBusinessFields(doc);
+        if (!doc.currentRevision) {
+            doc.currentRevision = doc.revisions[doc.revisions.length - 1].revision;
+        }
+        return true;
+    }
+
+    function validateStageTransition(doc, fromStage, toStage) {
+        const fromIndex = PIPELINE_STAGES.indexOf(fromStage);
+        const toIndex = PIPELINE_STAGES.indexOf(toStage);
+        if (fromIndex < 0 || toIndex < 0) {
+            return { ok: false, reason: 'Invalid pipeline stage.' };
+        }
+        if (toIndex <= fromIndex) {
+            return { ok: true };
+        }
+        const checkpoints = doc.pipeline.checkpoints || {};
+        const blockers = [];
+        if (!checkpoints.proposalReady) {
+            blockers.push('proposal');
+        }
+        if (toIndex >= PIPELINE_STAGES.indexOf('contract') && !checkpoints.contractSigned) {
+            blockers.push('contract');
+        }
+        if (toIndex >= PIPELINE_STAGES.indexOf('invoice') && !checkpoints.invoiceSent) {
+            blockers.push('invoice');
+        }
+        if (toIndex >= PIPELINE_STAGES.indexOf('payment') && !checkpoints.paymentReceived) {
+            blockers.push('payment');
+        }
+        if (blockers.length) {
+            return { ok: false, reason: 'Missing required checkpoint(s): ' + blockers.join(', ') + '.' };
+        }
+        return { ok: true };
     }
 
     function escapeHtml(text) {
@@ -1271,14 +1473,10 @@ Date: {{date}}
             state.libraryFetchController = controller;
             const q = encodeURIComponent((el.librarySearch.value || '').trim());
             const industry = encodeURIComponent((el.libraryIndustry.value || '').trim());
-            const response = await fetch(
+            const payload = await requestJson(
                 '/api/templates/library?q=' + q + '&industry=' + industry + '&limit=40&offset=0',
-                { signal: controller.signal }
+                { signal: controller.signal, timeoutMs: 8000 }
             );
-            if (!response.ok) {
-                throw new Error('library fetch failed');
-            }
-            const payload = await response.json();
             state.libraryTemplates = Array.isArray(payload.templates) ? payload.templates : [];
             renderLibraryIndustryOptions(payload.industries || []);
             renderLibraryList();
@@ -1663,7 +1861,7 @@ Date: {{date}}
     }
 
     function getActiveRevision() {
-        if (!state.currentDoc) {
+        if (!normalizeAndValidateCurrentDoc(state.currentDoc)) {
             return null;
         }
         return getRevisionByNumber(state.currentDoc, state.activeRevision || state.currentDoc.currentRevision);
@@ -1804,7 +2002,7 @@ Date: {{date}}
         const controller = new AbortController();
         state.previewFetchController = controller;
 
-        fetch('/api/preview', {
+        requestJson('/api/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1814,12 +2012,6 @@ Date: {{date}}
             }),
             signal: controller.signal,
         })
-            .then((response) => {
-                if (!response.ok) {
-                    throw new Error('preview fetch failed');
-                }
-                return response.json();
-            })
             .then((payload) => {
                 if (requestSeq !== state.previewRequestSeq) {
                     return;
@@ -1919,11 +2111,11 @@ Date: {{date}}
         const name = (el.customClauseName.value || '').trim();
         const body = (el.customClauseBody.value || '').trim();
         if (!name) {
-            alert('Clause name is required.');
+            notify('Clause name is required.', 'error');
             return;
         }
         if (!body) {
-            alert('Clause body is required.');
+            notify('Clause body is required.', 'error');
             return;
         }
 
@@ -1960,7 +2152,7 @@ Date: {{date}}
         const title = clause ? clause.name : (el.customClauseName.value || '').trim();
         const body = clause ? clause.body : (el.customClauseBody.value || '').trim();
         if (!title || !body) {
-            alert('Select or draft a custom clause to insert.');
+            notify('Select or draft a custom clause to insert.', 'error');
             return;
         }
 
@@ -2039,9 +2231,9 @@ Date: {{date}}
             return;
         }
 
-        const blockers = pipelineBlockers(doc).filter((item) => !item.done);
-        if (desiredIndex > currentIndex && blockers.length > 0) {
-            notify('Cannot advance stage yet: complete required checkpoints first.', 'error');
+        const decision = validateStageTransition(doc, doc.pipeline.stage, stageFromUi);
+        if (!decision.ok) {
+            notify(decision.reason || 'Cannot advance stage yet.', 'error');
             renderPipelinePanel();
             return;
         }
@@ -2273,7 +2465,7 @@ Date: {{date}}
         );
 
         try {
-            const response = await fetch('/api/integrations/billing/sync', {
+            const payload = await requestJson('/api/integrations/billing/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2286,14 +2478,11 @@ Date: {{date}}
                     })),
                 }),
             });
-            const payload = await response.json();
-            if (response.ok) {
-                notify(
-                    'Billing sync: $' + Number(payload.total_outstanding || 0).toFixed(2)
-                    + ' outstanding across ' + Number(payload.outstanding_count || 0) + ' invoice(s).',
-                    'success'
-                );
-            }
+            notify(
+                'Billing sync: $' + Number(payload.total_outstanding || 0).toFixed(2)
+                + ' outstanding across ' + Number(payload.outstanding_count || 0) + ' invoice(s).',
+                'success'
+            );
         } catch (err) {
             console.error(err);
         }
@@ -2348,6 +2537,10 @@ Date: {{date}}
     }
 
     function bindDocToUi() {
+        if (!normalizeAndValidateCurrentDoc(state.currentDoc)) {
+            notify('Current document is invalid. Try importing from a valid export package.', 'error');
+            return;
+        }
         const revision = getActiveRevision();
         if (!revision) {
             return;
@@ -2449,10 +2642,7 @@ Date: {{date}}
         }
 
         if (active.revision !== doc.currentRevision) {
-            const shouldSwitch = window.confirm('This revision is read-only. Switch to the current revision?');
-            if (!shouldSwitch) {
-                return null;
-            }
+            notify('Switched to the current editable revision.', 'success');
             state.activeRevision = doc.currentRevision;
             bindDocToUi();
         }
@@ -2469,7 +2659,7 @@ Date: {{date}}
         return current;
     }
     async function saveCurrentDoc() {
-        if (!state.currentDoc) {
+        if (!normalizeAndValidateCurrentDoc(state.currentDoc)) {
             return;
         }
 
@@ -2552,12 +2742,12 @@ Date: {{date}}
         }
 
         if (revision.revision !== state.currentDoc.currentRevision) {
-            alert('You can only sign the current revision.');
+            notify('You can only sign the current revision.', 'error');
             return;
         }
 
         if (revision.status === 'signed') {
-            alert('This revision is already fully signed. Create a new revision to change it.');
+            notify('This revision is already fully signed. Create a new revision to change it.', 'error');
             return;
         }
         openSignatureModal(role);
@@ -2569,13 +2759,13 @@ Date: {{date}}
             return;
         }
         if (!state.signatureCapture.hasStroke) {
-            alert('Draw a signature before accepting.');
+            notify('Draw a signature before accepting.', 'error');
             return;
         }
 
         const signerName = (el.signatureName.value || '').trim();
         if (!signerName) {
-            alert('Signer name is required.');
+            notify('Signer name is required.', 'error');
             return;
         }
 
@@ -2635,7 +2825,7 @@ Date: {{date}}
     async function saveClient() {
         const legalName = (el.clientLegalName.value || '').trim();
         if (!legalName) {
-            alert('Client legal name is required.');
+            notify('Client legal name is required.', 'error');
             return;
         }
 
@@ -2723,7 +2913,9 @@ Date: {{date}}
         if (!revision) {
             return;
         }
-        const response = await fetch('/api/export', {
+        let blob = null;
+        try {
+            blob = await requestBlob('/api/export', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2732,19 +2924,11 @@ Date: {{date}}
                 template: el.templateSelect.value || 'modern',
                 page_size: el.pageSize.value || 'Letter',
             }),
-        });
-        if (!response.ok) {
-            let message = 'PDF export failed.';
-            try {
-                const payload = await response.json();
-                message = payload.error || message;
-            } catch (_) {
-                // Keep generic error when body is not JSON.
-            }
-            notify(message, 'error');
+            });
+        } catch (err) {
+            notify(err.message || 'PDF export failed.', 'error');
             return;
         }
-        const blob = await response.blob();
         const filename = (state.currentDoc.title || 'sow').replace(/\s+/g, '_') + '.pdf';
         const href = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
@@ -2813,7 +2997,7 @@ Date: {{date}}
                     for (let i = 0; i < parsed.packages.length; i += 1) {
                         const pkg = parsed.packages[i] || {};
                         const migrated = migrateDoc(pkg.doc || {});
-                        if (migrated && migrated.id) {
+                        if (migrated && migrated.id && normalizeAndValidateCurrentDoc(migrated)) {
                             await dbPut(DOC_STORE, migrated);
                             importSummary.docsImported += 1;
                             if (!firstDoc) {
@@ -2857,6 +3041,10 @@ Date: {{date}}
                 }
 
                 const incomingDoc = migrateDoc(parsed.doc || parsed);
+                if (!normalizeAndValidateCurrentDoc(incomingDoc)) {
+                    notify('Import failed: document payload is incomplete or invalid.', 'error');
+                    return;
+                }
                 await dbPut(DOC_STORE, incomingDoc);
                 importSummary.docsImported += 1;
 
@@ -3001,14 +3189,18 @@ ${el.preview.innerHTML}
 
         const revision = getActiveRevision();
         if (revision && revision.status !== 'signed') {
-            const continueUnsigned = window.confirm(
-                'This revision is unsigned. Publish anyway as unsigned read-only draft?'
-            );
+            const continueUnsigned = await openConfirmModal({
+                title: 'Publish Unsigned Draft?',
+                message: 'This revision is unsigned. Publish anyway as an unsigned read-only draft?',
+                confirmLabel: 'Publish Draft',
+            });
             if (!continueUnsigned) {
                 return;
             }
         }
-        const response = await fetch(baseUrl.replace(/\/$/, '') + '/v1/publish', {
+        let payload = null;
+        try {
+            payload = await requestJson(baseUrl.replace(/\/$/, '') + '/v1/publish', {
             method: 'POST',
             headers: withMutationAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({
@@ -3022,12 +3214,9 @@ ${el.preview.innerHTML}
                 template: el.templateSelect.value || 'modern',
                 page_size: el.pageSize.value || 'Letter',
             }),
-        });
-
-        const payload = await response.json();
-        if (!response.ok) {
-            const message = payload.error || 'Publish failed';
-            notify(message, 'error');
+            });
+        } catch (err) {
+            notify(err.message || 'Publish failed', 'error');
             return;
         }
 
@@ -3038,7 +3227,11 @@ ${el.preview.innerHTML}
                 : 'Published. Copy the link from your browser address bar or metadata view.',
             'success'
         );
-        const shouldSendEmail = window.confirm('Published successfully. Send email to the client now?');
+        const shouldSendEmail = await openConfirmModal({
+            title: 'Send Client Email?',
+            message: 'Published successfully. Send this SOW by email now?',
+            confirmLabel: 'Open Email Form',
+        });
         if (shouldSendEmail) {
             await promptAndSendPublishedEmail(baseUrl.replace(/\/$/, ''), payload).catch(function (err) {
                 console.error(err);
@@ -3049,40 +3242,39 @@ ${el.preview.innerHTML}
 
     async function promptAndSendPublishedEmail(basePluginUrl, publishPayload) {
         const defaultRecipient = (el.clientEmail.value || '').trim();
-        const toEmail = prompt('Recipient email:', defaultRecipient);
-        if (toEmail === null) {
+        const defaultSubject = 'Statement of Work: ' + (collectVariables().project_name || 'Statement of Work');
+        const formResult = await openEmailModal({
+            toEmail: defaultRecipient,
+            subject: defaultSubject,
+            message: '',
+            attachPdf: true,
+        });
+        if (!formResult) {
             return;
         }
-        const normalizedEmail = toEmail.trim();
+        const normalizedEmail = formResult.toEmail.trim();
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
             notify('Please enter a valid recipient email.', 'error');
             return;
         }
 
-        const defaultSubject = 'Statement of Work: ' + (collectVariables().project_name || 'Statement of Work');
-        const subject = prompt('Email subject:', defaultSubject);
-        if (subject === null) {
-            return;
-        }
-        const message = prompt('Optional message (leave blank for none):', '') || '';
-        const attachPdf = window.confirm('Attach PDF to the email? Click Cancel for link-only email.');
-
-        const response = await fetch(
+        let payload = null;
+        try {
+            payload = await requestJson(
             basePluginUrl + '/v1/p/' + encodeURIComponent(publishPayload.publish_id) + '/email',
             {
                 method: 'POST',
                 headers: withMutationAuthHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     to_email: normalizedEmail,
-                    subject: subject.trim() || defaultSubject,
-                    message: message.trim(),
-                    attach_pdf: attachPdf,
+                    subject: formResult.subject.trim() || defaultSubject,
+                    message: formResult.message.trim(),
+                    attach_pdf: Boolean(formResult.attachPdf),
                 }),
-            }
-        );
-        const payload = await response.json();
-        if (!response.ok) {
-            notify(payload.error || 'Email send failed', 'error');
+            },
+            );
+        } catch (err) {
+            notify(err.message || 'Email send failed', 'error');
             return;
         }
         notify('Email sent to ' + payload.to_email + (payload.attached_pdf ? ' with PDF attachment.' : '.'), 'success');
@@ -3137,11 +3329,7 @@ ${el.preview.innerHTML}
     }
 
     async function loadSetupStatus() {
-        const response = await fetch('/api/setup/status');
-        if (!response.ok) {
-            throw new Error('Failed to load setup status');
-        }
-        const payload = await response.json();
+        const payload = await requestJson('/api/setup/status', { timeoutMs: 8000 });
         state.setup.statusLoaded = true;
         state.setup.completed = Boolean(payload.setup_completed);
 
@@ -3179,14 +3367,16 @@ ${el.preview.innerHTML}
 
     async function runSetupCheck() {
         const payload = collectSetupPayload();
-        const response = await fetch('/api/setup/check', {
+        let result = null;
+        try {
+            result = await requestJson('/api/setup/check', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-        });
-        const result = await response.json();
-        if (!response.ok) {
-            renderSetupStatus([result.error || 'Setup check failed'], true);
+            timeoutMs: 12000,
+            });
+        } catch (err) {
+            renderSetupStatus([err.message || 'Setup check failed'], true);
             return false;
         }
 
@@ -3232,14 +3422,16 @@ ${el.preview.innerHTML}
 
     async function saveSetup() {
         const payload = collectSetupPayload();
-        const response = await fetch('/api/setup/save', {
+        let result = null;
+        try {
+            result = await requestJson('/api/setup/save', {
             method: 'POST',
             headers: withMutationAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(payload),
-        });
-        const result = await response.json();
-        if (!response.ok) {
-            renderSetupStatus([result.error || 'Setup save failed'], true);
+            timeoutMs: 12000,
+            });
+        } catch (err) {
+            renderSetupStatus([err.message || 'Setup save failed'], true);
             return false;
         }
 
@@ -3604,6 +3796,45 @@ ${el.preview.innerHTML}
                 }
             });
         }
+        if (el.btnConfirmCancel) {
+            el.btnConfirmCancel.addEventListener('click', function () {
+                closeConfirmModal(false);
+            });
+        }
+        if (el.btnConfirmAccept) {
+            el.btnConfirmAccept.addEventListener('click', function () {
+                closeConfirmModal(true);
+            });
+        }
+        if (el.confirmModal) {
+            el.confirmModal.addEventListener('click', function (event) {
+                if (event.target === el.confirmModal) {
+                    closeConfirmModal(false);
+                }
+            });
+        }
+        if (el.btnEmailCancel) {
+            el.btnEmailCancel.addEventListener('click', function () {
+                closeEmailModal(null);
+            });
+        }
+        if (el.btnEmailSend) {
+            el.btnEmailSend.addEventListener('click', function () {
+                closeEmailModal({
+                    toEmail: (el.emailTo.value || '').trim(),
+                    subject: (el.emailSubject.value || '').trim(),
+                    message: (el.emailMessage.value || '').trim(),
+                    attachPdf: Boolean(el.emailAttachPdf.checked),
+                });
+            });
+        }
+        if (el.emailModal) {
+            el.emailModal.addEventListener('click', function (event) {
+                if (event.target === el.emailModal) {
+                    closeEmailModal(null);
+                }
+            });
+        }
         el.btnSetupCheck.addEventListener('click', function () {
             runSetupCheck().catch(function (err) {
                 console.error(err);
@@ -3641,6 +3872,14 @@ ${el.preview.innerHTML}
             }
             if (event.key === 'Escape' && el.shortcutsModal && !el.shortcutsModal.classList.contains('hidden')) {
                 closeShortcutsModal();
+                return;
+            }
+            if (event.key === 'Escape' && el.confirmModal && !el.confirmModal.classList.contains('hidden')) {
+                closeConfirmModal(false);
+                return;
+            }
+            if (event.key === 'Escape' && el.emailModal && !el.emailModal.classList.contains('hidden')) {
+                closeEmailModal(null);
                 return;
             }
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {

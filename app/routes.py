@@ -37,6 +37,7 @@ from app.services.publish_service import (
 from app.services.email_delivery_service import send_published_email
 from app.services.billing_provider_service import (
     available_providers,
+    BillingValidationError,
     sync_provider_invoices,
 )
 
@@ -713,6 +714,8 @@ def billing_sync():
 
     try:
         result = sync_provider_invoices(provider, invoices)
+    except BillingValidationError as exc:
+        return jsonify({'error': exc.message, 'field': exc.field, 'message': exc.message}), 400
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
     return jsonify(result)

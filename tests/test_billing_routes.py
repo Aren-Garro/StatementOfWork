@@ -60,3 +60,38 @@ def test_billing_sync_summarizes_outstanding(monkeypatch):
     assert payload["synced_count"] == 2
     assert payload["outstanding_count"] == 1
     assert payload["total_outstanding"] == 3000.0
+
+
+def test_billing_sync_rejects_non_object_invoice_row(monkeypatch):
+    client = _make_client(monkeypatch)
+    response = client.post(
+        "/api/integrations/billing/sync",
+        json={"provider": "stripe", "invoices": ["bad-row"]},
+    )
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["field"] == "invoices[0]"
+    assert "object" in payload["message"]
+
+
+def test_billing_sync_rejects_missing_invoice_number(monkeypatch):
+    client = _make_client(monkeypatch)
+    response = client.post(
+        "/api/integrations/billing/sync",
+        json={"provider": "stripe", "invoices": [{"amount": 10, "due_date": "2026-03-01", "status": "open"}]},
+    )
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["field"] == "invoices[0].number"
+
+
+def test_billing_sync_rejects_invalid_due_date(monkeypatch):
+    client = _make_client(monkeypatch)
+    response = client.post(
+        "/api/integrations/billing/sync",
+        json={"provider": "stripe", "invoices": [{"number": "INV-1", "amount": 10, "due_date": "03/01/2026"}]},
+    )
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["field"] == "invoices[0].due_date"
+    assert "YYYY-MM-DD" in payload["message"]

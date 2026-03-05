@@ -313,6 +313,32 @@
             </div>
         </div>
     </div>
+    <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <div class="modal-content modal-narrow">
+            <h2 id="confirm-title">Confirm Action</h2>
+            <p id="confirm-message" class="muted"></p>
+            <div class="modal-actions">
+                <button id="btn-confirm-cancel" class="btn">Cancel</button>
+                <button id="btn-confirm-accept" class="btn btn-primary">Continue</button>
+            </div>
+        </div>
+    </div>
+    <div id="email-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="email-title">
+        <div class="modal-content modal-narrow">
+            <h2 id="email-title">Send Published SOW</h2>
+            <label>Recipient Email<input id="email-to" type="email" placeholder="client@example.com"></label>
+            <label>Subject<input id="email-subject" type="text" placeholder="Statement of Work"></label>
+            <label>Message<textarea id="email-message" rows="4" placeholder="Optional note"></textarea></label>
+            <label class="checkbox-row">
+                <input id="email-attach-pdf" type="checkbox" checked>
+                <span>Attach PDF</span>
+            </label>
+            <div class="modal-actions">
+                <button id="btn-email-cancel" class="btn">Cancel</button>
+                <button id="btn-email-send" class="btn btn-primary">Send Email</button>
+            </div>
+        </div>
+    </div>
 
     <script src="/static/js/editor_utils.js"></script>
     <script src="/static/js/editor_revision_utils.js"></script>

@@ -31,6 +31,15 @@ class BillingProviderAdapter(Protocol):
         """List currently open invoices."""
 
 
+class BillingValidationError(ValueError):
+    """Structured validation error for adapter payloads."""
+
+    def __init__(self, field: str, message: str):
+        super().__init__(message)
+        self.field = field
+        self.message = message
+
+
 class _BaseAdapter:
     provider_name = "base"
 
@@ -80,11 +89,27 @@ def available_providers() -> list[dict]:
     ]
 
 
-def _parse_invoice(raw: dict) -> InvoiceRecord:
+def _parse_invoice(raw: dict, index: int) -> InvoiceRecord:
     number = str(raw.get("number", "")).strip()
     due_date = str(raw.get("due_date", "")).strip()
-    amount = float(raw.get("amount", 0) or 0)
     status = str(raw.get("status", "open") or "open").strip().lower()
+    field_prefix = f"invoices[{index}]"
+    if not number:
+        raise BillingValidationError(f"{field_prefix}.number", "Invoice number is required")
+    if not due_date:
+        raise BillingValidationError(f"{field_prefix}.due_date", "Invoice due_date is required")
+    try:
+        date.fromisoformat(due_date)
+    except ValueError as exc:
+        raise BillingValidationError(f"{field_prefix}.due_date", "Invoice due_date must be YYYY-MM-DD") from exc
+    try:
+        amount = float(raw.get("amount", 0) or 0)
+    except (TypeError, ValueError) as exc:
+        raise BillingValidationError(f"{field_prefix}.amount", "Invoice amount must be numeric") from exc
+    if amount < 0:
+        raise BillingValidationError(f"{field_prefix}.amount", "Invoice amount must be non-negative")
+    if status not in {"open", "paid", "void"}:
+        raise BillingValidationError(f"{field_prefix}.status", "Invoice status must be open, paid, or void")
     return InvoiceRecord(number=number, amount=amount, due_date=due_date, status=status)
 
 
@@ -95,7 +120,11 @@ def sync_provider_invoices(provider: str, raw_invoices: list[dict]) -> dict:
         raise ValueError("Unsupported billing provider")
 
     adapter = _ADAPTERS[key]
-    invoices = [_parse_invoice(item) for item in raw_invoices if isinstance(item, dict)]
+    invoices = []
+    for index, item in enumerate(raw_invoices):
+        if not isinstance(item, dict):
+            raise BillingValidationError(f"invoices[{index}]", "Each invoice must be an object")
+        invoices.append(_parse_invoice(item, index))
     synced = adapter.sync_payment_status(invoices)
     outstanding = adapter.list_outstanding(invoices)
     due_now = sum(1 for row in outstanding if _is_due_or_overdue(row.get("due_date", "")))
@@ -118,4 +147,3 @@ def _is_due_or_overdue(due_date: str) -> bool:
     except ValueError:
         return False
     return due <= date.today()
-
