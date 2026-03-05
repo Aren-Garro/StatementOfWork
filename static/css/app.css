@@ -597,6 +597,34 @@ textarea {
     font-size: 0.78rem;
 }
 
+.toast-stack {
+    position: fixed;
+    right: 1rem;
+    top: 1rem;
+    z-index: 1300;
+    display: grid;
+    gap: 0.45rem;
+    width: min(360px, calc(100vw - 2rem));
+}
+
+.toast {
+    border: 1px solid var(--line);
+    border-left: 4px solid #0ea5e9;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: var(--shadow);
+    padding: 0.5rem 0.6rem;
+    font-size: 0.82rem;
+}
+
+.toast.success {
+    border-left-color: #16a34a;
+}
+
+.toast.error {
+    border-left-color: #dc2626;
+}
+
 .modal-content {
     width: min(780px, 100%);
     background: #fff;
@@ -604,6 +632,30 @@ textarea {
     border-radius: 12px;
     box-shadow: var(--shadow);
     padding: 0.9rem;
+}
+
+.modal-narrow {
+    width: min(520px, 100%);
+}
+
+.shortcut-list {
+    margin: 0.6rem 0;
+    padding-left: 1.1rem;
+}
+
+.shortcut-list li {
+    margin-bottom: 0.35rem;
+    font-size: 0.86rem;
+}
+
+kbd {
+    font-family: "Cascadia Code", "Consolas", monospace;
+    font-size: 0.76rem;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    padding: 0 0.3rem;
 }
 
 #signature-canvas {
@@ -718,6 +770,12 @@ textarea {
         left: 0.5rem;
         bottom: 0.5rem;
         grid-template-columns: repeat(4, 1fr);
+    }
+
+    .toast-stack {
+        right: 0.5rem;
+        left: 0.5rem;
+        width: auto;
     }
 }
 

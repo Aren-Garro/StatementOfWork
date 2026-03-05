@@ -292,6 +292,7 @@ Date: {{date}}
             btn_export_md: 'Export .md',
             btn_export_json: 'Export .json',
             btn_import: 'Import',
+            btn_help: 'Shortcuts',
             btn_settings: 'Sharing',
             btn_publish: 'Publish',
             compare_none: 'No comparison selected.',
@@ -318,6 +319,7 @@ Date: {{date}}
             btn_export_md: 'Exportar .md',
             btn_export_json: 'Exportar .json',
             btn_import: 'Importar',
+            btn_help: 'Atajos',
             btn_settings: 'Compartir',
             btn_publish: 'Publicar',
             compare_none: 'Sin comparacion seleccionada.',
@@ -344,6 +346,7 @@ Date: {{date}}
             btn_export_md: 'Exporter .md',
             btn_export_json: 'Exporter .json',
             btn_import: 'Importer',
+            btn_help: 'Raccourcis',
             btn_settings: 'Partage',
             btn_publish: 'Publier',
             compare_none: 'Aucune comparaison selectionnee.',
@@ -445,9 +448,11 @@ Date: {{date}}
         btnExportMd: document.getElementById('btn-export-md'),
         btnExportJson: document.getElementById('btn-export-json'),
         btnImport: document.getElementById('btn-import'),
+        btnHelp: document.getElementById('btn-help'),
         fileImport: document.getElementById('file-import'),
         btnPublish: document.getElementById('btn-publish'),
         btnSettings: document.getElementById('btn-settings'),
+        toastStack: document.getElementById('toast-stack'),
         signatureModal: document.getElementById('signature-modal'),
         signatureSubtitle: document.getElementById('signature-subtitle'),
         signatureName: document.getElementById('signature-name'),
@@ -456,6 +461,8 @@ Date: {{date}}
         btnSignatureCancel: document.getElementById('btn-signature-cancel'),
         btnSignatureAccept: document.getElementById('btn-signature-accept'),
         setupModal: document.getElementById('setup-modal'),
+        shortcutsModal: document.getElementById('shortcuts-modal'),
+        btnShortcutsClose: document.getElementById('btn-shortcuts-close'),
         setupStatus: document.getElementById('setup-status'),
         setupPluginUrl: document.getElementById('setup-plugin-url'),
         setupPluginAuthToken: document.getElementById('setup-plugin-auth-token'),
@@ -512,6 +519,56 @@ Date: {{date}}
         return SAMPLE_MARKDOWN_BY_LOCALE[currentLocale()] || SAMPLE_MARKDOWN_BY_LOCALE.en;
     }
 
+    function notify(message, kind) {
+        if (!el.toastStack) {
+            return;
+        }
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + (kind || 'info');
+        toast.textContent = String(message || '').trim();
+        el.toastStack.appendChild(toast);
+        window.setTimeout(function () {
+            toast.remove();
+        }, 3200);
+    }
+
+    function openShortcutsModal() {
+        if (el.shortcutsModal) {
+            el.shortcutsModal.classList.remove('hidden');
+        }
+    }
+
+    function closeShortcutsModal() {
+        if (el.shortcutsModal) {
+            el.shortcutsModal.classList.add('hidden');
+        }
+    }
+
+    async function copyText(text) {
+        const value = String(text || '');
+        if (!value) {
+            return false;
+        }
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(value);
+                return true;
+            }
+        } catch (_) {
+            // Fallback to manual copy below.
+        }
+        const input = document.createElement('textarea');
+        input.value = value;
+        input.setAttribute('readonly', '');
+        input.style.position = 'absolute';
+        input.style.left = '-9999px';
+        document.body.appendChild(input);
+        input.select();
+        const ok = document.execCommand('copy');
+        input.remove();
+        return ok;
+    }
+
     function applyLocaleToUi() {
         el.btnNew.textContent = t('btn_new');
         el.btnNewRevision.textContent = t('btn_new_revision');
@@ -524,6 +581,9 @@ Date: {{date}}
         el.btnExportMd.textContent = t('btn_export_md');
         el.btnExportJson.textContent = t('btn_export_json');
         el.btnImport.textContent = t('btn_import');
+        if (el.btnHelp) {
+            el.btnHelp.textContent = t('btn_help');
+        }
         el.btnSettings.textContent = t('btn_settings');
         el.btnPublish.textContent = t('btn_publish');
         el.librarySearch.placeholder = t('library_search_placeholder');
@@ -2188,7 +2248,7 @@ Date: {{date}}
             } catch (_) {
                 // Keep generic error when body is not JSON.
             }
-            alert(message);
+            notify(message, 'error');
             return;
         }
         const blob = await response.blob();
@@ -2249,7 +2309,7 @@ Date: {{date}}
                     state.activeRevision = 1;
                     bindDocToUi();
                     renderDocList();
-                    alert('Import complete: 1 document imported from markdown.');
+                    notify('Import complete: 1 document imported from markdown.', 'success');
                     return;
                 }
 
@@ -2295,9 +2355,10 @@ Date: {{date}}
                     } else {
                         importSummary.errors.push('No valid document packages found in JSON.');
                     }
-                    alert(
+                    notify(
                         `Import complete: ${importSummary.docsImported} docs, ${importSummary.clientsImported} clients.` +
-                        (importSummary.errors.length ? ` Issues: ${importSummary.errors.join('; ')}` : '')
+                        (importSummary.errors.length ? ` Issues: ${importSummary.errors.join('; ')}` : ''),
+                        importSummary.errors.length ? 'error' : 'success'
                     );
                     return;
                 }
@@ -2330,13 +2391,14 @@ Date: {{date}}
                 state.activeRevision = incomingDoc.currentRevision;
                 bindDocToUi();
                 renderDocList();
-                alert(
+                notify(
                     `Import complete: ${importSummary.docsImported} docs, ${importSummary.clientsImported} clients.` +
-                    (importSummary.errors.length ? ` Issues: ${importSummary.errors.join('; ')}` : '')
+                    (importSummary.errors.length ? ` Issues: ${importSummary.errors.join('; ')}` : ''),
+                    importSummary.errors.length ? 'error' : 'success'
                 );
             } catch (err) {
                 console.error(err);
-                alert('Import failed. Check file format.');
+                notify('Import failed. Check file format.', 'error');
             }
         };
 
@@ -2418,7 +2480,7 @@ ${el.preview.innerHTML}
         if (!win) {
             downloadPdfExport().catch(function (err) {
                 console.error(err);
-                alert('Pop-up blocked and PDF fallback failed.');
+                notify('Pop-up blocked and PDF fallback failed.', 'error');
             });
             return;
         }
@@ -2439,7 +2501,7 @@ ${el.preview.innerHTML}
             syncSharingState();
         }
         if (!baseUrl) {
-            alert('Run setup first to configure sharing.');
+            notify('Run setup first to configure sharing.', 'error');
             return;
         }
 
@@ -2471,18 +2533,24 @@ ${el.preview.innerHTML}
         const payload = await response.json();
         if (!response.ok) {
             const message = payload.error || 'Publish failed';
-            alert(message);
+            notify(message, 'error');
             return;
         }
 
+        const copied = await copyText(payload.view_url);
+        notify(
+            copied
+                ? 'Published. Link copied to clipboard (30-day expiry).'
+                : 'Published. Copy the link from your browser address bar or metadata view.',
+            'success'
+        );
         const shouldSendEmail = window.confirm('Published successfully. Send email to the client now?');
         if (shouldSendEmail) {
             await promptAndSendPublishedEmail(baseUrl.replace(/\/$/, ''), payload).catch(function (err) {
                 console.error(err);
-                alert('Email send failed.');
+                notify('Email send failed.', 'error');
             });
         }
-        prompt('Published link (expires in 30 days):', payload.view_url);
     }
 
     async function promptAndSendPublishedEmail(basePluginUrl, publishPayload) {
@@ -2493,7 +2561,7 @@ ${el.preview.innerHTML}
         }
         const normalizedEmail = toEmail.trim();
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
-            alert('Please enter a valid recipient email.');
+            notify('Please enter a valid recipient email.', 'error');
             return;
         }
 
@@ -2520,10 +2588,10 @@ ${el.preview.innerHTML}
         );
         const payload = await response.json();
         if (!response.ok) {
-            alert(payload.error || 'Email send failed');
+            notify(payload.error || 'Email send failed', 'error');
             return;
         }
-        alert('Email sent to ' + payload.to_email + (payload.attached_pdf ? ' with PDF attachment.' : '.'));
+        notify('Email sent to ' + payload.to_email + (payload.attached_pdf ? ' with PDF attachment.' : '.'), 'success');
     }
 
     function buildDefaultPluginUrl() {
@@ -2948,7 +3016,7 @@ ${el.preview.innerHTML}
         el.btnExportPdf.addEventListener('click', function () {
             downloadPdfExport().catch(function (err) {
                 console.error(err);
-                alert('PDF export failed.');
+                notify('PDF export failed.', 'error');
             });
         });
         el.btnExportMd.addEventListener('click', exportMarkdown);
@@ -2967,7 +3035,7 @@ ${el.preview.innerHTML}
             el.quickPdf.addEventListener('click', function () {
                 downloadPdfExport().catch(function (err) {
                     console.error(err);
-                    alert('PDF export failed.');
+                    notify('PDF export failed.', 'error');
                 });
             });
         }
@@ -2975,7 +3043,7 @@ ${el.preview.innerHTML}
             el.quickShare.addEventListener('click', function () {
                 publishDocument().catch(function (err) {
                     console.error(err);
-                    alert('Publish failed.');
+                    notify('Publish failed.', 'error');
                 });
             });
         }
@@ -2993,13 +3061,30 @@ ${el.preview.innerHTML}
         el.btnPublish.addEventListener('click', function () {
             publishDocument().catch(function (err) {
                 console.error(err);
-                alert('Publish failed.');
+                notify('Publish failed.', 'error');
             });
         });
 
         el.btnSettings.addEventListener('click', function () {
             openSetupModal(true);
         });
+        if (el.btnHelp) {
+            el.btnHelp.addEventListener('click', function () {
+                openShortcutsModal();
+            });
+        }
+        if (el.btnShortcutsClose) {
+            el.btnShortcutsClose.addEventListener('click', function () {
+                closeShortcutsModal();
+            });
+        }
+        if (el.shortcutsModal) {
+            el.shortcutsModal.addEventListener('click', function (event) {
+                if (event.target === el.shortcutsModal) {
+                    closeShortcutsModal();
+                }
+            });
+        }
         el.btnSetupCheck.addEventListener('click', function () {
             runSetupCheck().catch(function (err) {
                 console.error(err);
@@ -3033,6 +3118,10 @@ ${el.preview.innerHTML}
             }
             if (event.key === 'Escape' && !el.setupModal.classList.contains('hidden')) {
                 closeSetupModal();
+                return;
+            }
+            if (event.key === 'Escape' && el.shortcutsModal && !el.shortcutsModal.classList.contains('hidden')) {
+                closeShortcutsModal();
                 return;
             }
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -3090,6 +3179,6 @@ ${el.preview.innerHTML}
 
     init().catch(function (err) {
         console.error(err);
-        alert('Failed to initialize local storage.');
+        notify('Failed to initialize local storage.', 'error');
     });
 })();
