@@ -302,6 +302,9 @@ Date: {{date}}
             new_custom_clause: 'New custom clause',
             signature_as: 'Signing as {role}. Draw your signature below.',
             library_search_placeholder: 'Search templates',
+            sidebar_filter_placeholder: 'Find panel (client, revisions, templates...)',
+            btn_collapse_all: 'Collapse All',
+            btn_expand_all: 'Expand All',
         },
         es: {
             btn_new: 'Nuevo',
@@ -325,6 +328,9 @@ Date: {{date}}
             new_custom_clause: 'Nueva clausula personalizada',
             signature_as: 'Firmando como {role}. Dibuje su firma abajo.',
             library_search_placeholder: 'Buscar plantillas',
+            sidebar_filter_placeholder: 'Buscar panel (cliente, revisiones, plantillas...)',
+            btn_collapse_all: 'Contraer todo',
+            btn_expand_all: 'Expandir todo',
         },
         fr: {
             btn_new: 'Nouveau',
@@ -348,6 +354,9 @@ Date: {{date}}
             new_custom_clause: 'Nouvelle clause personnalisee',
             signature_as: 'Signature en tant que {role}. Dessinez votre signature ci-dessous.',
             library_search_placeholder: 'Rechercher des modeles',
+            sidebar_filter_placeholder: 'Trouver un panneau (client, revisions, modeles...)',
+            btn_collapse_all: 'Tout reduire',
+            btn_expand_all: 'Tout ouvrir',
         },
     };
 
@@ -382,6 +391,10 @@ Date: {{date}}
             statusLoaded: false,
             completed: false,
             authToken: '',
+        },
+        sidebar: {
+            filter: '',
+            collapsed: {},
         },
     };
 
@@ -460,6 +473,13 @@ Date: {{date}}
         btnSetupCheck: document.getElementById('btn-setup-check'),
         btnSetupSave: document.getElementById('btn-setup-save'),
         btnSetupSkip: document.getElementById('btn-setup-skip'),
+        sidebarFilter: document.getElementById('sidebar-filter'),
+        btnCollapseAll: document.getElementById('btn-collapse-all'),
+        btnExpandAll: document.getElementById('btn-expand-all'),
+        quickSave: document.getElementById('btn-quick-save'),
+        quickPrint: document.getElementById('btn-quick-print'),
+        quickPdf: document.getElementById('btn-quick-pdf'),
+        quickShare: document.getElementById('btn-quick-share'),
         varInputs: document.querySelectorAll('[data-var]'),
         snippetButtons: document.querySelectorAll('[data-snippet]'),
     };
@@ -507,6 +527,27 @@ Date: {{date}}
         el.btnSettings.textContent = t('btn_settings');
         el.btnPublish.textContent = t('btn_publish');
         el.librarySearch.placeholder = t('library_search_placeholder');
+        if (el.sidebarFilter) {
+            el.sidebarFilter.placeholder = t('sidebar_filter_placeholder');
+        }
+        if (el.btnCollapseAll) {
+            el.btnCollapseAll.textContent = t('btn_collapse_all');
+        }
+        if (el.btnExpandAll) {
+            el.btnExpandAll.textContent = t('btn_expand_all');
+        }
+        if (el.quickSave) {
+            el.quickSave.textContent = t('btn_save');
+        }
+        if (el.quickPrint) {
+            el.quickPrint.textContent = t('btn_export');
+        }
+        if (el.quickPdf) {
+            el.quickPdf.textContent = t('btn_export_pdf');
+        }
+        if (el.quickShare) {
+            el.quickShare.textContent = t('btn_publish');
+        }
     }
 
     function setLocale(locale) {
@@ -2673,6 +2714,99 @@ ${el.preview.innerHTML}
         el.btnPublish.title = configured ? 'Publish read-only link' : 'Run setup to configure sharing first';
     }
 
+    function getSidebarSections() {
+        return Array.from(document.querySelectorAll('.sidebar .sidebar-section'));
+    }
+
+    function sectionStorageKey(sectionId) {
+        return 'sidebar_section_' + sectionId;
+    }
+
+    function setSectionCollapsed(section, collapsed) {
+        const sectionId = section.dataset.sectionId;
+        section.classList.toggle('collapsed', Boolean(collapsed));
+        const toggle = section.querySelector('.section-toggle');
+        if (toggle) {
+            toggle.textContent = collapsed ? '+' : '-';
+            toggle.setAttribute('aria-label', collapsed ? 'Expand panel' : 'Collapse panel');
+        }
+        if (sectionId) {
+            state.sidebar.collapsed[sectionId] = Boolean(collapsed);
+            localStorage.setItem(sectionStorageKey(sectionId), collapsed ? '1' : '0');
+        }
+    }
+
+    function setAllSectionsCollapsed(collapsed) {
+        getSidebarSections().forEach((section) => {
+            setSectionCollapsed(section, collapsed);
+        });
+    }
+
+    function applySidebarFilter(query) {
+        const normalized = (query || '').trim().toLowerCase();
+        state.sidebar.filter = normalized;
+        getSidebarSections().forEach((section) => {
+            const title = String(section.dataset.sectionTitle || '').toLowerCase();
+            const hide = normalized && !title.includes(normalized);
+            section.classList.toggle('filtered-out', hide);
+        });
+    }
+
+    function initSidebarPanels() {
+        const sections = Array.from(document.querySelectorAll('.sidebar > section'));
+        sections.forEach((section, index) => {
+            section.classList.add('sidebar-section');
+            if (!section.dataset.sectionId) {
+                section.dataset.sectionId = 'section_' + (index + 1);
+            }
+
+            const heading = section.querySelector('h2');
+            if (!heading) {
+                return;
+            }
+            const title = heading.textContent.trim();
+            section.dataset.sectionTitle = title;
+
+            const body = document.createElement('div');
+            body.className = 'section-body';
+
+            while (heading.nextSibling) {
+                body.appendChild(heading.nextSibling);
+            }
+
+            const header = document.createElement('div');
+            header.className = 'section-header';
+            heading.parentNode.insertBefore(header, heading);
+            header.appendChild(heading);
+
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'section-toggle';
+            toggle.textContent = '-';
+            toggle.setAttribute('aria-label', 'Collapse panel');
+            header.appendChild(toggle);
+            toggle.addEventListener('click', function () {
+                const nextCollapsed = !section.classList.contains('collapsed');
+                setSectionCollapsed(section, nextCollapsed);
+            });
+
+            section.appendChild(body);
+
+            const persisted = localStorage.getItem(sectionStorageKey(section.dataset.sectionId));
+            if (persisted === '1') {
+                setSectionCollapsed(section, true);
+            }
+        });
+
+        if (el.sidebarFilter) {
+            const savedFilter = (localStorage.getItem('sidebar_filter') || '').trim();
+            if (savedFilter) {
+                el.sidebarFilter.value = savedFilter;
+                applySidebarFilter(savedFilter);
+            }
+        }
+    }
+
     function setupEvents() {
         el.editor.addEventListener('input', function () {
             const revision = ensureEditableCurrent();
@@ -2760,6 +2894,23 @@ ${el.preview.innerHTML}
         el.libraryIndustry.addEventListener('change', function () {
             scheduleLibraryRefresh();
         });
+        if (el.sidebarFilter) {
+            el.sidebarFilter.addEventListener('input', function () {
+                const value = el.sidebarFilter.value || '';
+                localStorage.setItem('sidebar_filter', value);
+                applySidebarFilter(value);
+            });
+        }
+        if (el.btnCollapseAll) {
+            el.btnCollapseAll.addEventListener('click', function () {
+                setAllSectionsCollapsed(true);
+            });
+        }
+        if (el.btnExpandAll) {
+            el.btnExpandAll.addEventListener('click', function () {
+                setAllSectionsCollapsed(false);
+            });
+        }
         el.btnSignatureClear.addEventListener('click', resetSignatureCanvas);
         el.btnSignatureCancel.addEventListener('click', closeSignatureModal);
         el.btnSignatureAccept.addEventListener('click', acceptSignatureFromModal);
@@ -2802,6 +2953,32 @@ ${el.preview.innerHTML}
         });
         el.btnExportMd.addEventListener('click', exportMarkdown);
         el.btnExportJson.addEventListener('click', exportJson);
+        if (el.quickSave) {
+            el.quickSave.addEventListener('click', function () {
+                saveCurrentDoc().catch(console.error);
+            });
+        }
+        if (el.quickPrint) {
+            el.quickPrint.addEventListener('click', function () {
+                openPrintWindow();
+            });
+        }
+        if (el.quickPdf) {
+            el.quickPdf.addEventListener('click', function () {
+                downloadPdfExport().catch(function (err) {
+                    console.error(err);
+                    alert('PDF export failed.');
+                });
+            });
+        }
+        if (el.quickShare) {
+            el.quickShare.addEventListener('click', function () {
+                publishDocument().catch(function (err) {
+                    console.error(err);
+                    alert('Publish failed.');
+                });
+            });
+        }
 
         el.btnImport.addEventListener('click', function () {
             el.fileImport.value = '';
@@ -2866,6 +3043,13 @@ ${el.preview.innerHTML}
                 event.preventDefault();
                 openPrintWindow();
             }
+            if (event.key === '/' && document.activeElement !== el.editor && document.activeElement !== el.sidebarFilter) {
+                event.preventDefault();
+                if (el.sidebarFilter) {
+                    el.sidebarFilter.focus();
+                    el.sidebarFilter.select();
+                }
+            }
         });
     }
 
@@ -2884,6 +3068,7 @@ ${el.preview.innerHTML}
             el.languageSelect.value = state.locale;
         }
         clearComparison();
+        initSidebarPanels();
         bindDocToUi();
         renderDocList();
         setupEvents();

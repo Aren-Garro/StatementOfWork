@@ -120,10 +120,74 @@ textarea {
     overflow-y: auto;
 }
 
+.sidebar-tools {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #ffffff;
+    padding-bottom: 0.6rem;
+    margin-bottom: 0.55rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.sidebar-tools input {
+    width: 100%;
+    margin-bottom: 0.45rem;
+}
+
+.sidebar-tool-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35rem;
+}
+
+.btn-small-inline {
+    width: 100%;
+    text-align: center;
+    padding: 0.35rem 0.4rem;
+    font-size: 0.76rem;
+}
+
 .sidebar section + section {
     margin-top: 1rem;
     padding-top: 0.8rem;
     border-top: 1px solid var(--line);
+}
+
+.sidebar-section {
+    transition: opacity 120ms ease;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.45rem;
+    margin-bottom: 0.3rem;
+}
+
+.section-header h2 {
+    margin: 0;
+}
+
+.section-toggle {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #f8fbff;
+    color: var(--muted);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.1rem 0.5rem;
+    cursor: pointer;
+}
+
+.sidebar-section.collapsed .section-body {
+    display: none;
+}
+
+.sidebar-section.filtered-out {
+    display: none;
 }
 
 .sidebar h2 {
@@ -512,6 +576,27 @@ textarea {
     display: none !important;
 }
 
+.quick-actions {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 1100;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(72px, auto));
+    gap: 0.45rem;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 0.5rem;
+    backdrop-filter: blur(6px);
+}
+
+.quick-actions .btn {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.78rem;
+}
+
 .modal-content {
     width: min(780px, 100%);
     background: #fff;
@@ -627,10 +712,18 @@ textarea {
     .modal-actions {
         flex-direction: column;
     }
+
+    .quick-actions {
+        right: 0.5rem;
+        left: 0.5rem;
+        bottom: 0.5rem;
+        grid-template-columns: repeat(4, 1fr);
+    }
 }
 
 @media print {
     .app-header,
+    .quick-actions,
     .sidebar,
     .pane:first-of-type {
         display: none;

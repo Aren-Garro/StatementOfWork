@@ -48,6 +48,13 @@
 
     <main class="editor-layout">
         <aside class="sidebar">
+            <div class="sidebar-tools">
+                <input id="sidebar-filter" type="text" placeholder="Find panel (client, revisions, templates...)">
+                <div class="sidebar-tool-actions">
+                    <button id="btn-collapse-all" class="btn btn-small-inline">Collapse All</button>
+                    <button id="btn-expand-all" class="btn btn-small-inline">Expand All</button>
+                </div>
+            </div>
             <section>
                 <h2>Document</h2>
                 <p id="doc-name" class="doc-name"></p>
@@ -171,6 +178,12 @@
             <article id="preview-content" class="preview theme-modern"></article>
         </section>
     </main>
+    <div class="quick-actions" aria-label="Quick actions">
+        <button id="btn-quick-save" class="btn btn-primary">Save</button>
+        <button id="btn-quick-print" class="btn">Print</button>
+        <button id="btn-quick-pdf" class="btn">PDF</button>
+        <button id="btn-quick-share" class="btn">Share</button>
+    </div>
 
     <div id="signature-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="signature-title">
         <div class="modal-content">
