@@ -94,3 +94,39 @@ def test_setup_save_applies_runtime_env(client):
     assert payload["setup_completed"] is True
     assert os.environ.get("SMTP_HOST") == "smtp.example.com"
     assert os.environ.get("SMTP_FROM_EMAIL") == "sender@example.com"
+
+
+def test_setup_save_requires_auth_token_when_configured(monkeypatch):
+    db_path = models.DATABASE_PATH.replace("sow.db", f"sow_setup_auth_test_{uuid4().hex}.db")
+    monkeypatch.setattr(models, "DATABASE_PATH", db_path)
+    monkeypatch.setenv("PLUGIN_AUTH_TOKEN", "setup-secret")
+    app = create_app({"TESTING": True})
+    test_client = app.test_client()
+
+    payload = {
+        "sharing_plugin_url": "http://localhost:5000/plugin",
+        "smtp": {
+            "host": "smtp.example.com",
+            "port": 587,
+            "username": "user",
+            "password": "pass",
+            "from_email": "sender@example.com",
+            "from_name": "SOW Creator",
+            "use_starttls": True,
+            "use_ssl": False,
+            "timeout_seconds": 10,
+        },
+    }
+
+    unauthorized = test_client.post("/api/setup/save", json=payload)
+    assert unauthorized.status_code == 401
+
+    authorized = test_client.post(
+        "/api/setup/save",
+        json=payload,
+        headers={"X-Plugin-Auth": "setup-secret"},
+    )
+    assert authorized.status_code == 200
+
+    if os.path.exists(db_path):
+        os.remove(db_path)

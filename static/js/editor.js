@@ -287,7 +287,8 @@ Date: {{date}}
             btn_change_order: 'Change Order',
             btn_sign_consultant: 'Sign as Consultant',
             btn_sign_client: 'Sign as Client',
-            btn_export: 'Print / PDF',
+            btn_export: 'Print',
+            btn_export_pdf: 'Download PDF',
             btn_export_md: 'Export .md',
             btn_export_json: 'Export .json',
             btn_import: 'Import',
@@ -309,7 +310,8 @@ Date: {{date}}
             btn_change_order: 'Orden de Cambio',
             btn_sign_consultant: 'Firmar como Consultor',
             btn_sign_client: 'Firmar como Cliente',
-            btn_export: 'Imprimir / PDF',
+            btn_export: 'Imprimir',
+            btn_export_pdf: 'Descargar PDF',
             btn_export_md: 'Exportar .md',
             btn_export_json: 'Exportar .json',
             btn_import: 'Importar',
@@ -331,7 +333,8 @@ Date: {{date}}
             btn_change_order: 'Ordre de Changement',
             btn_sign_consultant: 'Signer comme Consultant',
             btn_sign_client: 'Signer comme Client',
-            btn_export: 'Imprimer / PDF',
+            btn_export: 'Imprimer',
+            btn_export_pdf: 'Telecharger PDF',
             btn_export_md: 'Exporter .md',
             btn_export_json: 'Exporter .json',
             btn_import: 'Importer',
@@ -378,6 +381,7 @@ Date: {{date}}
         setup: {
             statusLoaded: false,
             completed: false,
+            authToken: '',
         },
     };
 
@@ -424,6 +428,7 @@ Date: {{date}}
         btnSignConsultant: document.getElementById('btn-sign-consultant'),
         btnSignClient: document.getElementById('btn-sign-client'),
         btnExport: document.getElementById('btn-export'),
+        btnExportPdf: document.getElementById('btn-export-pdf'),
         btnExportMd: document.getElementById('btn-export-md'),
         btnExportJson: document.getElementById('btn-export-json'),
         btnImport: document.getElementById('btn-import'),
@@ -440,6 +445,7 @@ Date: {{date}}
         setupModal: document.getElementById('setup-modal'),
         setupStatus: document.getElementById('setup-status'),
         setupPluginUrl: document.getElementById('setup-plugin-url'),
+        setupPluginAuthToken: document.getElementById('setup-plugin-auth-token'),
         setupCheckPluginHealth: document.getElementById('setup-check-plugin-health'),
         setupSmtpHost: document.getElementById('setup-smtp-host'),
         setupSmtpPort: document.getElementById('setup-smtp-port'),
@@ -494,6 +500,7 @@ Date: {{date}}
         el.btnSignConsultant.textContent = t('btn_sign_consultant');
         el.btnSignClient.textContent = t('btn_sign_client');
         el.btnExport.textContent = t('btn_export');
+        el.btnExportPdf.textContent = t('btn_export_pdf');
         el.btnExportMd.textContent = t('btn_export_md');
         el.btnExportJson.textContent = t('btn_export_json');
         el.btnImport.textContent = t('btn_import');
@@ -2117,6 +2124,44 @@ Date: {{date}}
         downloadFile(filename, JSON.stringify(packageObj, null, 2), 'application/json;charset=utf-8');
     }
 
+    async function downloadPdfExport() {
+        const revision = getActiveRevision();
+        if (!revision) {
+            return;
+        }
+        const response = await fetch('/api/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                markdown: revision.markdown || '',
+                variables: collectVariables(),
+                template: el.templateSelect.value || 'modern',
+                page_size: el.pageSize.value || 'Letter',
+            }),
+        });
+        if (!response.ok) {
+            let message = 'PDF export failed.';
+            try {
+                const payload = await response.json();
+                message = payload.error || message;
+            } catch (_) {
+                // Keep generic error when body is not JSON.
+            }
+            alert(message);
+            return;
+        }
+        const blob = await response.blob();
+        const filename = (state.currentDoc.title || 'sow').replace(/\s+/g, '_') + '.pdf';
+        const href = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = href;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(href);
+    }
+
     function importFile(file) {
         if (!file) {
             return;
@@ -2330,7 +2375,10 @@ ${el.preview.innerHTML}
 
         const win = window.open('', '_blank');
         if (!win) {
-            alert('Pop-up blocked. Allow pop-ups to print/export.');
+            downloadPdfExport().catch(function (err) {
+                console.error(err);
+                alert('Pop-up blocked and PDF fallback failed.');
+            });
             return;
         }
         win.document.open();
@@ -2365,7 +2413,7 @@ ${el.preview.innerHTML}
         }
         const response = await fetch(baseUrl.replace(/\/$/, '') + '/v1/publish', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: withMutationAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({
                 title: collectVariables().project_name || 'Statement of Work',
                 html: el.preview.innerHTML,
@@ -2420,7 +2468,7 @@ ${el.preview.innerHTML}
             basePluginUrl + '/v1/p/' + encodeURIComponent(publishPayload.publish_id) + '/email',
             {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: withMutationAuthHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     to_email: normalizedEmail,
                     subject: subject.trim() || defaultSubject,
@@ -2441,11 +2489,30 @@ ${el.preview.innerHTML}
         return window.location.origin.replace(/\/$/, '') + '/plugin';
     }
 
+    function getPluginAuthToken() {
+        if (el.setupPluginAuthToken && el.setupPluginAuthToken.value.trim()) {
+            return el.setupPluginAuthToken.value.trim();
+        }
+        return (localStorage.getItem('plugin_auth_token') || '').trim();
+    }
+
+    function withMutationAuthHeaders(baseHeaders) {
+        const headers = Object.assign({}, baseHeaders || {});
+        const token = getPluginAuthToken();
+        if (token) {
+            headers['X-Plugin-Auth'] = token;
+        }
+        return headers;
+    }
+
     function collectSetupPayload() {
         return {
             sharing_plugin_url: (el.setupPluginUrl.value || '').trim() || buildDefaultPluginUrl(),
             check_plugin_health: Boolean(el.setupCheckPluginHealth.checked),
             check_smtp_connection: Boolean(el.setupCheckSmtpConnection.checked),
+            auth: {
+                plugin_auth_token: getPluginAuthToken(),
+            },
             smtp: {
                 host: (el.setupSmtpHost.value || '').trim(),
                 port: Number(el.setupSmtpPort.value || 587),
@@ -2477,6 +2544,11 @@ ${el.preview.innerHTML}
 
         const savedPlugin = (localStorage.getItem('sharing_plugin_url') || '').trim();
         el.setupPluginUrl.value = savedPlugin || payload.sharing.configured_plugin_url || payload.sharing.default_plugin_url;
+        const savedAuthToken = (localStorage.getItem('plugin_auth_token') || '').trim();
+        if (el.setupPluginAuthToken && savedAuthToken && !el.setupPluginAuthToken.value) {
+            el.setupPluginAuthToken.value = savedAuthToken;
+        }
+        state.setup.authToken = savedAuthToken;
         if (payload.smtp && payload.smtp.host && !el.setupSmtpHost.value) {
             el.setupSmtpHost.value = payload.smtp.host;
         }
@@ -2494,7 +2566,11 @@ ${el.preview.innerHTML}
         if (depLines.length) {
             renderSetupStatus(depLines, true);
         } else {
-            renderSetupStatus(['Setup status loaded. Run "Check Setup" to validate connectivity.'], false);
+            const statusLines = ['Setup status loaded. Run "Check Setup" to validate connectivity.'];
+            if (payload.auth && payload.auth.token_configured && !savedAuthToken) {
+                statusLines.push('Server requires plugin auth token for mutation endpoints.');
+            }
+            renderSetupStatus(statusLines, false);
         }
     }
 
@@ -2538,6 +2614,14 @@ ${el.preview.innerHTML}
                 lines.push('SMTP connection: OK');
             }
         }
+        if (result.auth) {
+            if (result.auth.valid) {
+                lines.push('Mutation auth: ready');
+            } else {
+                hasError = true;
+                lines.push('Mutation auth: token required for non-local access');
+            }
+        }
         lines.push(result.ready_to_save ? 'Ready to save setup.' : 'Resolve issues before saving setup.');
         renderSetupStatus(lines, hasError);
         return !hasError;
@@ -2547,7 +2631,7 @@ ${el.preview.innerHTML}
         const payload = collectSetupPayload();
         const response = await fetch('/api/setup/save', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: withMutationAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(payload),
         });
         const result = await response.json();
@@ -2557,6 +2641,13 @@ ${el.preview.innerHTML}
         }
 
         localStorage.setItem('sharing_plugin_url', payload.sharing_plugin_url);
+        if (payload.auth && payload.auth.plugin_auth_token) {
+            localStorage.setItem('plugin_auth_token', payload.auth.plugin_auth_token);
+            state.setup.authToken = payload.auth.plugin_auth_token;
+        } else {
+            localStorage.removeItem('plugin_auth_token');
+            state.setup.authToken = '';
+        }
         localStorage.setItem('setup_completed', 'true');
         state.setup.completed = true;
         syncSharingState();
@@ -2703,6 +2794,12 @@ ${el.preview.innerHTML}
         });
 
         el.btnExport.addEventListener('click', openPrintWindow);
+        el.btnExportPdf.addEventListener('click', function () {
+            downloadPdfExport().catch(function (err) {
+                console.error(err);
+                alert('PDF export failed.');
+            });
+        });
         el.btnExportMd.addEventListener('click', exportMarkdown);
         el.btnExportJson.addEventListener('click', exportJson);
 

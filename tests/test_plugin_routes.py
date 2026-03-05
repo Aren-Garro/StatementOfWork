@@ -6,7 +6,6 @@ from uuid import uuid4
 import pytest
 
 import app.models as models
-import app.routes as routes
 import app.services.email_delivery_service as email_delivery_service
 from app import create_app
 from app.email_service import EmailConfigError, EmailSendError
@@ -16,10 +15,9 @@ from app.email_service import EmailConfigError, EmailSendError
 def client(monkeypatch):
     db_path = models.DATABASE_PATH.replace("sow.db", f"sow_plugin_test_{uuid4().hex}.db")
     monkeypatch.setattr(models, "DATABASE_PATH", db_path)
-    routes._rate_events.clear()
+    monkeypatch.delenv("PLUGIN_AUTH_TOKEN", raising=False)
     app = create_app({"TESTING": True})
     yield app.test_client(), app
-    routes._rate_events.clear()
     if os.path.exists(db_path):
         os.remove(db_path)
 
@@ -319,3 +317,36 @@ def test_expired_link_and_cleanup(client):
     assert data["cleaned"] >= 1
     assert data["scanned"] >= 1
     assert data["timestamp"]
+
+
+def test_mutation_endpoints_require_auth_token_when_configured(monkeypatch):
+    db_path = models.DATABASE_PATH.replace("sow.db", f"sow_plugin_auth_test_{uuid4().hex}.db")
+    monkeypatch.setattr(models, "DATABASE_PATH", db_path)
+    monkeypatch.setenv("PLUGIN_AUTH_TOKEN", "top-secret")
+    app = create_app({"TESTING": True})
+    test_client = app.test_client()
+
+    published = _publish_for_email(test_client)
+    publish_id = published["publish_id"]
+
+    email_resp = test_client.post(
+        f"/plugin/v1/p/{publish_id}/email",
+        json={"to_email": "client@example.com"},
+    )
+    assert email_resp.status_code == 401
+
+    delete_resp = test_client.delete(f"/plugin/v1/p/{publish_id}")
+    assert delete_resp.status_code == 401
+
+    cleanup_resp = test_client.post("/plugin/v1/cleanup")
+    assert cleanup_resp.status_code == 401
+
+    headers = {"X-Plugin-Auth": "top-secret"}
+    delete_ok = test_client.delete(f"/plugin/v1/p/{publish_id}", headers=headers)
+    assert delete_ok.status_code == 200
+
+    cleanup_ok = test_client.post("/plugin/v1/cleanup", headers=headers)
+    assert cleanup_ok.status_code == 200
+
+    if os.path.exists(db_path):
+        os.remove(db_path)

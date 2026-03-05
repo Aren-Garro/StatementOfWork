@@ -35,7 +35,8 @@
             <button id="btn-change-order" class="btn">Change Order</button>
             <button id="btn-sign-consultant" class="btn">Sign as Consultant</button>
             <button id="btn-sign-client" class="btn">Sign as Client</button>
-            <button id="btn-export" class="btn btn-primary">Print / PDF</button>
+            <button id="btn-export" class="btn btn-primary">Print</button>
+            <button id="btn-export-pdf" class="btn">Download PDF</button>
             <button id="btn-export-md" class="btn">Export .md</button>
             <button id="btn-export-json" class="btn">Export .json</button>
             <button id="btn-import" class="btn">Import</button>
@@ -195,6 +196,9 @@
                     <h3>Sharing Plugin</h3>
                     <label>Plugin Base URL
                         <input id="setup-plugin-url" type="text" placeholder="http://localhost:5000/plugin">
+                    </label>
+                    <label>Plugin Auth Token (optional for local-only)
+                        <input id="setup-plugin-auth-token" type="password" placeholder="Set for remote/shared deployments">
                     </label>
                     <label class="checkbox-row">
                         <input id="setup-check-plugin-health" type="checkbox" checked>

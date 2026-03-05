@@ -26,8 +26,8 @@ This model covers:
 
 1. Stored XSS in published content
 - Threat: attacker stores active HTML/JS and executes in readers' browsers.
-- Mitigation: server-side sanitization is always applied before persistence.
-- Residual risk: sanitizer is regex-based and should eventually be replaced with a dedicated HTML sanitizer library.
+- Mitigation: server-side allowlist sanitization is always applied before persistence, plus CSP denies inline/script execution.
+- Residual risk: sanitizer allowlist still requires periodic review as new rendering needs are added.
 
 2. Rate-limit bypass through spoofed source IP
 - Threat: attacker rotates forged forwarding headers.
@@ -36,8 +36,8 @@ This model covers:
 
 3. Abusive publish volume / resource exhaustion
 - Threat: repeated publish requests fill storage and degrade service.
-- Mitigation: per-IP rate limit window and optional captcha requirement via `PUBLISH_CAPTCHA_TOKEN`.
-- Residual risk: in-memory counters reset on restart and are not shared across workers.
+- Mitigation: per-IP rate limit window and optional captcha requirement via `PUBLISH_CAPTCHA_TOKEN` backed by SQLite rate event storage.
+- Residual risk: distributed multi-instance deployments need a shared external store for strict global limits.
 
 4. Invalid or malformed publish/template payloads
 - Threat: malformed payload causes 500s or bypasses business constraints.
@@ -57,6 +57,6 @@ This model covers:
 
 ## Next security steps
 
-1. Replace regex sanitizer with allowlist-based sanitizer.
-2. Move rate-limit state to shared storage for multi-worker deployments.
-3. Add authn/authz controls for plugin mutation endpoints if exposed beyond trusted local use.
+1. Add role-based authn/authz in front of plugin mutation endpoints for multi-user deployments.
+2. Move rate-limit state to an external shared store for multi-instance deployments.
+3. Add security regression tests for CSP and sanitizer bypass payloads.

@@ -108,6 +108,13 @@ Setup API endpoints used by the wizard:
 - `POST /api/setup/check`
 - `POST /api/setup/save`
 
+Mutation endpoints (`/api/setup/save`, plugin email/delete/cleanup) support auth via:
+
+- `X-Plugin-Auth: <token>` header, or
+- `Authorization: Bearer <token>`
+
+Set `PLUGIN_AUTH_TOKEN` for shared/non-local deployments.
+
 ## Core Architecture
 
 - **`templates/editor.html`**: Single-page app shell for the editor interface
@@ -164,6 +171,11 @@ Built-in protection without enterprise pricing:
 
 See `.env.example` for configuration defaults.
 
+Security:
+
+- `PLUGIN_AUTH_TOKEN` (recommended for shared/non-local deployments)
+- `TRUST_PROXY_HOPS` (required when behind a reverse proxy)
+
 Email delivery (SMTP) requires:
 
 - `SMTP_HOST`
@@ -175,6 +187,24 @@ Email delivery (SMTP) requires:
 - `SMTP_USE_STARTTLS`
 - `SMTP_USE_SSL`
 - `SMTP_TIMEOUT_SECONDS`
+
+## Windows Packaging (Portable EXE + Optional MSI)
+
+Build portable EXE:
+
+```powershell
+.\scripts\build_portable.ps1
+```
+
+Output: `dist/SOWCreator.exe`
+
+Optional MSI (requires WiX v4 CLI `wix`):
+
+```powershell
+.\scripts\build_msi.ps1
+```
+
+Output: `dist/SOWCreator.msi`
 
 ## Development & Quality
 

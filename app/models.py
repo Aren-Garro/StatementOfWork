@@ -1,21 +1,54 @@
 """Database models for template persistence."""
-import sqlite3
 import json
 import os
+import sqlite3
 from datetime import datetime
-from flask import g
+from urllib.parse import urlparse, unquote
+
+from flask import current_app, g
 
 
-DATABASE_PATH = os.path.join(
+DEFAULT_DATABASE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), 'data', 'sow.db'
 )
+# Backward-compatible alias for tests and scripts.
+DATABASE_PATH = DEFAULT_DATABASE_PATH
+
+
+def _resolve_database_path() -> str:
+    database_url = (current_app.config.get('DATABASE_URL') or '').strip()
+    if not database_url:
+        return DATABASE_PATH
+    if database_url == 'sqlite:///data/sow.db' and DATABASE_PATH != DEFAULT_DATABASE_PATH:
+        return DATABASE_PATH
+
+    parsed = urlparse(database_url)
+    if parsed.scheme and parsed.scheme != 'sqlite':
+        raise RuntimeError('Only sqlite DATABASE_URL values are supported')
+
+    if parsed.netloc and parsed.netloc not in {'', 'localhost'}:
+        raise RuntimeError('Unsupported sqlite DATABASE_URL host')
+
+    if not parsed.path:
+        return DATABASE_PATH
+
+    raw_path = unquote(parsed.path)
+    if os.name == 'nt' and raw_path.startswith('/') and len(raw_path) > 2 and raw_path[2] == ':':
+        raw_path = raw_path[1:]
+
+    if os.path.isabs(raw_path):
+        return raw_path
+
+    repo_root = os.path.dirname(os.path.dirname(__file__))
+    return os.path.abspath(os.path.join(repo_root, raw_path.lstrip('/')))
 
 
 def get_db():
     """Get database connection for current request."""
     if 'db' not in g:
-        os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-        g.db = sqlite3.connect(DATABASE_PATH)
+        db_path = _resolve_database_path()
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        g.db = sqlite3.connect(db_path)
         g.db.row_factory = sqlite3.Row
     return g.db
 
@@ -61,6 +94,18 @@ def init_db(app):
             page_size TEXT NOT NULL DEFAULT 'Letter'
         )
     ''')
+
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS rate_limit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_ip TEXT NOT NULL,
+            created_at REAL NOT NULL
+        )
+    ''')
+    db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_rate_limit_events_ip_time '
+        'ON rate_limit_events(client_ip, created_at)'
+    )
 
     _ensure_column(db, 'published_docs', 'revision', 'INTEGER')
     _ensure_column(db, 'published_docs', 'signed', 'INTEGER NOT NULL DEFAULT 0')

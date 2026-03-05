@@ -1,15 +1,17 @@
 """Routes for the SOW Generator."""
 import io
+import hmac
+import ipaddress
 import json
 import os
 import re
 import smtplib
 import socket
 from datetime import datetime, timezone
-from collections import defaultdict, deque
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
 
+import bleach
 from flask import (
     Blueprint,
     current_app,
@@ -41,7 +43,6 @@ plugin_bp = Blueprint('plugin', __name__)
 _RATE_WINDOW_SECONDS = 60
 _RATE_LIMIT_PER_WINDOW = 20
 _CAPTCHA_THRESHOLD_PER_WINDOW = 10
-_rate_events = defaultdict(deque)
 _ALLOWED_TEMPLATES = {'modern', 'classic', 'minimal'}
 _ALLOWED_PAGE_SIZES = {'Letter', 'A4', 'Legal'}
 _ALLOWED_JURISDICTIONS = {
@@ -56,69 +57,151 @@ _ALLOWED_JURISDICTIONS = {
 _RUNTIME_SETUP = {
     'sharing_plugin_url': '',
     'smtp': {},
+    'plugin_auth_token': '',
 }
+CSP_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: https:; "
+    "font-src 'self' data:; "
+    "base-uri 'none'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'; "
+    "form-action 'self'"
+)
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@main_bp.after_app_request
+def _apply_response_security_headers(response):
+    response.headers.setdefault('Content-Security-Policy', CSP_POLICY)
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('Referrer-Policy', 'no-referrer')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    return response
+
+
 def _normalize_doc_id(raw: str) -> str:
     return re.sub(r'[^a-zA-Z0-9_-]', '', raw or '')
 
 
-def _is_rate_limited(client_ip: str) -> bool:
-    now = _utc_now().timestamp()
-    events = _rate_events[client_ip]
-    while events and now - events[0] > _RATE_WINDOW_SECONDS:
-        events.popleft()
+def _prune_rate_events(db, now_ts: float) -> None:
+    cutoff = now_ts - _RATE_WINDOW_SECONDS
+    db.execute('DELETE FROM rate_limit_events WHERE created_at < ?', (cutoff,))
 
-    events.append(now)
-    return len(events) > _RATE_LIMIT_PER_WINDOW
+
+def _record_and_count_rate_events(client_ip: str, *, now_ts: float) -> int:
+    db = get_db()
+    _prune_rate_events(db, now_ts)
+    db.execute(
+        'INSERT INTO rate_limit_events (client_ip, created_at) VALUES (?, ?)',
+        (client_ip, now_ts),
+    )
+    count = db.execute(
+        'SELECT COUNT(*) FROM rate_limit_events WHERE client_ip = ?',
+        (client_ip,),
+    ).fetchone()[0]
+    db.commit()
+    return int(count)
+
+
+def _recent_rate_event_count(client_ip: str, *, now_ts: float) -> int:
+    db = get_db()
+    _prune_rate_events(db, now_ts)
+    count = db.execute(
+        'SELECT COUNT(*) FROM rate_limit_events WHERE client_ip = ?',
+        (client_ip,),
+    ).fetchone()[0]
+    db.commit()
+    return int(count)
+
+
+def _is_rate_limited(client_ip: str) -> bool:
+    now_ts = _utc_now().timestamp()
+    event_count = _record_and_count_rate_events(client_ip, now_ts=now_ts)
+    return event_count > _RATE_LIMIT_PER_WINDOW
 
 
 def _needs_captcha(client_ip: str) -> bool:
-    now = _utc_now().timestamp()
-    events = _rate_events[client_ip]
-    while events and now - events[0] > _RATE_WINDOW_SECONDS:
-        events.popleft()
-    return len(events) > _CAPTCHA_THRESHOLD_PER_WINDOW
+    now_ts = _utc_now().timestamp()
+    event_count = _recent_rate_event_count(client_ip, now_ts=now_ts)
+    return event_count > _CAPTCHA_THRESHOLD_PER_WINDOW
+
+
+def _current_plugin_auth_token() -> str:
+    token = (_RUNTIME_SETUP.get('plugin_auth_token') or '').strip()
+    if token:
+        return token
+    token = (os.environ.get('PLUGIN_AUTH_TOKEN') or '').strip()
+    if token:
+        return token
+    return (current_app.config.get('PLUGIN_AUTH_TOKEN') or '').strip()
+
+
+def _is_loopback_client(client_ip: str) -> bool:
+    try:
+        return ipaddress.ip_address(client_ip).is_loopback
+    except ValueError:
+        return client_ip in {'localhost', 'unknown'}
+
+
+def _mutation_auth_headers() -> tuple[str, str]:
+    return (
+        (request.headers.get('X-Plugin-Auth') or '').strip(),
+        (request.headers.get('Authorization') or '').strip(),
+    )
+
+
+def _is_valid_bearer_header(value: str, expected_token: str) -> bool:
+    prefix = 'Bearer '
+    if not value.startswith(prefix):
+        return False
+    supplied = value[len(prefix):].strip()
+    return bool(supplied) and hmac.compare_digest(supplied, expected_token)
+
+
+def _require_mutation_auth(client_ip: str, event_prefix: str):
+    expected_token = _current_plugin_auth_token()
+    token_header, auth_header = _mutation_auth_headers()
+
+    if expected_token:
+        if hmac.compare_digest(token_header, expected_token) or _is_valid_bearer_header(auth_header, expected_token):
+            return None
+        _log_event('warning', f'{event_prefix}.auth_failed', client_ip=client_ip)
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    if _is_loopback_client(client_ip):
+        return None
+
+    _log_event('warning', f'{event_prefix}.auth_not_configured', client_ip=client_ip)
+    return jsonify({'error': 'Mutation auth token is required for non-local clients'}), 403
 
 
 def _sanitize_html(content: str) -> str:
-    """Apply defensive sanitization for published content."""
-    sanitized = content
-    # Strip high-risk tags and their contents.
-    for tag in ('script', 'style', 'iframe', 'object', 'embed', 'svg', 'math'):
-        sanitized = re.sub(
-            rf'<\s*{tag}[^>]*>.*?<\s*/\s*{tag}\s*>',
-            '',
-            sanitized,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-    # Strip self-closing high-risk tags.
-    sanitized = re.sub(
-        r'<\s*(meta|base|link)\b[^>]*>',
-        '',
-        sanitized,
-        flags=re.IGNORECASE,
+    """Apply allowlist-based sanitization for published content."""
+    allowed_tags = [
+        'a', 'article', 'blockquote', 'br', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4',
+        'h5', 'h6', 'hr', 'i', 'img', 'li', 'ol', 'p', 'pre', 'section', 'span',
+        'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'u', 'ul',
+    ]
+    allowed_attrs = {
+        '*': ['class', 'title'],
+        'a': ['href', 'target', 'rel'],
+        'img': ['src', 'alt'],
+    }
+    cleaner = bleach.Cleaner(
+        tags=allowed_tags,
+        attributes=allowed_attrs,
+        protocols=['http', 'https', 'mailto', 'data'],
+        strip=True,
+        strip_comments=True,
     )
-    # Strip inline event handlers: on*="...", on*='...', on*=unquoted
-    sanitized = re.sub(
-        r'\son\w+\s*=\s*(".*?"|\'.*?\'|[^\s>]+)',
-        '',
-        sanitized,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    # Strip javascript: pseudo-protocols and srcdoc attributes.
-    sanitized = re.sub(r'javascript\s*:', '', sanitized, flags=re.IGNORECASE)
-    sanitized = re.sub(
-        r'\ssrcdoc\s*=\s*(".*?"|\'.*?\'|[^\s>]+)',
-        '',
-        sanitized,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    return sanitized
+    sanitized = cleaner.clean(content or '')
+    return bleach.linkifier.Linker().linkify(sanitized)
 
 
 def _parse_int(value, default):
@@ -299,7 +382,7 @@ def _module_available(module_name: str) -> bool:
     try:
         __import__(module_name)
         return True
-    except ModuleNotFoundError:
+    except Exception:
         return False
 
 
@@ -319,6 +402,13 @@ def _normalize_setup_smtp(raw: dict | None) -> dict:
         'use_starttls': _parse_bool(smtp.get('use_starttls'), True),
         'use_ssl': _parse_bool(smtp.get('use_ssl'), False),
         'timeout_seconds': _parse_int(smtp.get('timeout_seconds', 10), 10),
+    }
+
+
+def _normalize_setup_auth(raw: dict | None) -> dict:
+    auth = raw if isinstance(raw, dict) else {}
+    return {
+        'plugin_auth_token': _normalized_text(auth.get('plugin_auth_token'), '', 256),
     }
 
 
@@ -382,9 +472,10 @@ def _check_plugin_health(plugin_url: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
-def _apply_runtime_setup(plugin_url: str, smtp: dict) -> None:
+def _apply_runtime_setup(plugin_url: str, smtp: dict, auth: dict) -> None:
     _RUNTIME_SETUP['sharing_plugin_url'] = plugin_url
     _RUNTIME_SETUP['smtp'] = dict(smtp)
+    _RUNTIME_SETUP['plugin_auth_token'] = auth['plugin_auth_token']
 
     os.environ['SMTP_HOST'] = smtp['host']
     os.environ['SMTP_PORT'] = str(smtp['port'])
@@ -395,6 +486,7 @@ def _apply_runtime_setup(plugin_url: str, smtp: dict) -> None:
     os.environ['SMTP_USE_STARTTLS'] = 'true' if smtp['use_starttls'] else 'false'
     os.environ['SMTP_USE_SSL'] = 'true' if smtp['use_ssl'] else 'false'
     os.environ['SMTP_TIMEOUT_SECONDS'] = str(smtp['timeout_seconds'])
+    os.environ['PLUGIN_AUTH_TOKEN'] = auth['plugin_auth_token']
 
 
 def _validate_template_create_payload(data: dict) -> str | None:
@@ -614,6 +706,7 @@ def setup_status():
         'weasyprint': _module_available('weasyprint'),
         'gunicorn': _module_available('gunicorn'),
     }
+    auth_token_configured = bool(_current_plugin_auth_token())
     return jsonify(
         {
             'setup_completed': bool(configured_plugin_url and smtp_configured),
@@ -628,6 +721,9 @@ def setup_status():
                 'from_email': smtp_from_env['from_email'],
             },
             'dependencies': deps,
+            'auth': {
+                'token_configured': auth_token_configured,
+            },
         }
     )
 
@@ -641,6 +737,7 @@ def setup_check():
 
     plugin_url = _normalized_text(data.get('sharing_plugin_url'), _default_plugin_url())
     smtp = _normalize_setup_smtp(data.get('smtp'))
+    auth = _normalize_setup_auth(data.get('auth'))
     check_smtp_connection = _parse_bool(data.get('check_smtp_connection'), False)
     check_plugin_health = _parse_bool(data.get('check_plugin_health'), True)
 
@@ -656,6 +753,9 @@ def setup_check():
         ok, message = _check_plugin_health(plugin_url)
         plugin_health = {'ok': ok, 'message': message}
 
+    auth_token = auth['plugin_auth_token'] or _current_plugin_auth_token()
+    auth_valid = bool(auth_token or _is_loopback_client(_get_client_ip()))
+
     return jsonify(
         {
             'sharing_plugin_url': plugin_url,
@@ -667,7 +767,11 @@ def setup_check():
             'plugin': {
                 'health': plugin_health,
             },
-            'ready_to_save': smtp_ok and (plugin_health['ok'] is not False),
+            'auth': {
+                'token_configured': bool(auth_token),
+                'valid': auth_valid,
+            },
+            'ready_to_save': smtp_ok and auth_valid and (plugin_health['ok'] is not False),
         }
     )
 
@@ -681,16 +785,23 @@ def setup_save():
 
     plugin_url = _normalized_text(data.get('sharing_plugin_url'), _default_plugin_url())
     smtp = _normalize_setup_smtp(data.get('smtp'))
+    auth = _normalize_setup_auth(data.get('auth'))
     smtp_issues = _validate_setup_smtp(smtp)
     if smtp_issues:
         return jsonify({'error': '; '.join(smtp_issues)}), 400
 
-    _apply_runtime_setup(plugin_url, smtp)
+    client_ip = _get_client_ip()
+    blocked = _require_mutation_auth(client_ip, 'setup.save')
+    if blocked:
+        return blocked
+
+    _apply_runtime_setup(plugin_url, smtp, auth)
     return jsonify(
         {
             'status': 'ok',
             'sharing_plugin_url': plugin_url,
             'smtp_configured': True,
+            'auth_token_configured': bool(auth['plugin_auth_token']),
             'setup_completed': True,
         }
     )
@@ -746,6 +857,9 @@ def plugin_get_published(publish_id):
 def plugin_email_published(publish_id):
     """Send published SOW by email via SMTP."""
     client_ip = _get_client_ip()
+    auth_error = _require_mutation_auth(client_ip, 'plugin.email')
+    if auth_error:
+        return auth_error
     blocked = _plugin_guard(client_ip, 'plugin.email')
     if blocked:
         return blocked
@@ -786,6 +900,10 @@ def plugin_email_published(publish_id):
 @plugin_bp.route('/v1/p/<publish_id>', methods=['DELETE'])
 def plugin_delete_published(publish_id):
     """Soft-delete a published document."""
+    client_ip = _get_client_ip()
+    auth_error = _require_mutation_auth(client_ip, 'plugin.delete')
+    if auth_error:
+        return auth_error
     publish_id = _normalize_doc_id(publish_id)
     db = get_db()
     try:
@@ -809,6 +927,10 @@ def plugin_health_check():
 @plugin_bp.route('/v1/cleanup', methods=['POST'])
 def plugin_cleanup():
     """Soft-delete all expired published docs."""
+    client_ip = _get_client_ip()
+    auth_error = _require_mutation_auth(client_ip, 'plugin.cleanup')
+    if auth_error:
+        return auth_error
     db = get_db()
     result = cleanup_expired_published_documents(db=db)
     _log_event('info', 'plugin.cleanup.completed', **result)

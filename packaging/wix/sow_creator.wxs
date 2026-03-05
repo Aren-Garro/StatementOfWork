@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+      Id="*"
+      Name="SOW Creator"
+      Language="1033"
+      Version="1.0.0"
+      Manufacturer="SOW Creator"
+      UpgradeCode="6a8b42cc-3015-4eb5-b4da-9d8e52a0d318">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of SOW Creator is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="SOW Creator" />
+      </Directory>
+    </Directory>
+
+    <Feature Id="MainFeature" Title="SOW Creator" Level="1">
+      <ComponentRef Id="MainExecutable" />
+    </Feature>
+  </Product>
+
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="f8f86a2b-f2eb-44e6-9ede-7466f59db58f">
+        <File Id="SOWCreatorExe" Source="dist\SOWCreator.exe" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

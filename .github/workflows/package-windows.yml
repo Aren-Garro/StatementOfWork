@@ -1,0 +1,30 @@
+name: Package Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build portable executable
+        shell: powershell
+        run: |
+          python -m venv .venv
+          .\scripts\build_portable.ps1
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sowcreator-portable
+          path: dist/SOWCreator.exe
