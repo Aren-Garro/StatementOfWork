@@ -31,6 +31,10 @@ Commercial SOW and proposal software like PandaDoc ($228-$588/year per user), Dr
 - **Native signature capture**: Client and consultant signatures with metadata and tamper-proof revision locking
 - **Instant PDF generation**: Browser-native print-to-PDF (no cloud processing)
 - **Client profile management**: Store client details locally with variable autofill
+- **Revenue pipeline tracker**: Lead → Proposal → Contract → Invoice → Payment stages with checkpoint blockers
+- **Change request control**: Track scope, fee, and margin impact before approval
+- **Collections dashboard**: Aging buckets, overdue visibility, and reminder checks
+- **Client pack workflow**: Guided proposal + contract + first-invoice onboarding flow
 - **Revision control**: Complete history with read-only prior versions and automatic/manual forking
 - **Jurisdiction clause packs**: Pre-configured legal clauses for US_BASE, US_NY, US_CA, EU_BASE, UK_BASE, CA_BASE, and AU_BASE with compliance checks
 - **Import/Export**: Markdown and JSON portability for backup and migration
@@ -63,6 +67,7 @@ Commercial SOW and proposal software like PandaDoc ($228-$588/year per user), Dr
 - Export to Markdown/JSON for team collaboration
 - SQLite backend for published document management
 - Self-hosted: deploy on your infrastructure
+- Billing adapter APIs for integration-led cashflow workflows
 
 ### Legal & Compliance
 - Jurisdiction clause packs (US_BASE, US_NY, US_CA, EU_BASE, UK_BASE, CA_BASE, AU_BASE)
@@ -114,6 +119,12 @@ Then open `http://localhost:5000`.
 - Bottom-right quick bar includes: **Save**, **Print**, **PDF**, **Share**.
 - Non-blocking toast messages show success/errors without interrupting editing.
 
+### Cashflow Workflow Panels
+- **Revenue Pipeline**: advance stages only after key checkpoints are complete.
+- **Change Requests**: log scope/fee/margin deltas and approve into contract version updates.
+- **Collections**: track invoices, aging buckets, and run reminder checks.
+- **Client Pack**: one-click tracking for proposal, contract, and first invoice send steps.
+
 ### Keyboard Shortcuts
 - `Ctrl+S`: Save current document
 - `Ctrl+E`: Print view
@@ -138,6 +149,11 @@ Setup API endpoints used by the wizard:
 - `POST /api/setup/check`
 - `POST /api/setup/save`
 
+Billing integration endpoints:
+
+- `GET /api/integrations/billing/providers`
+- `POST /api/integrations/billing/sync`
+
 Mutation endpoints (`/api/setup/save`, plugin email/delete/cleanup) support auth via:
 
 - `X-Plugin-Auth: <token>` header, or
@@ -154,6 +170,7 @@ If running local-only, you can leave plugin auth token blank and skip sharing se
 - **`static/css/app.css`**: Responsive editor UI, status/guardrail/revision controls, and print-optimized styles
 - **`app/routes.py`**: Optional sharing plugin APIs and public read-only route handlers
 - **`app/models.py`**: SQLite schema for templates and published documents (backend-compatible features)
+- **`app/services/billing_provider_service.py`**: Billing adapter interface and normalization helpers for provider sync
 
 ## Optional Sharing Plugin API
 

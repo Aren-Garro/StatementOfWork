@@ -3,7 +3,7 @@
     'use strict';
 
     const DB_NAME = 'sow_creator_db';
-    const DB_VERSION = 3;
+    const DB_VERSION = 4;
     const DOC_STORE = 'documents';
     const CLIENT_STORE = 'clients';
     const CLAUSE_STORE = 'custom_clauses';
@@ -79,6 +79,21 @@
         { key: 'out_of_scope', label: 'Out of scope / exclusions', test: (t) => t.includes('out of scope') || t.includes('exclusions') },
         { key: 'change_order', label: 'Change-order clause', test: (t) => t.includes('change order') },
         { key: 'signatures', label: 'Signature block', test: (t) => t.includes(':::signature') || t.includes('## signatures') },
+    ];
+
+    const PIPELINE_STAGES = ['lead', 'proposal', 'contract', 'invoice', 'payment'];
+    const PIPELINE_LABELS = {
+        lead: 'Lead',
+        proposal: 'Proposal',
+        contract: 'Contract',
+        invoice: 'Invoice',
+        payment: 'Payment',
+    };
+    const AGING_BUCKETS = [
+        { key: 'current', label: 'Current', min: -100000, max: 0 },
+        { key: 'days_1_15', label: '1-15 days', min: 1, max: 15 },
+        { key: 'days_16_30', label: '16-30 days', min: 16, max: 30 },
+        { key: 'days_31_plus', label: '31+ days', min: 31, max: 100000 },
     ];
 
     const SAMPLE_MARKDOWN_BY_LOCALE = {
@@ -429,6 +444,26 @@ Date: {{date}}
         clientContactName: document.getElementById('client-contact-name'),
         clientEmail: document.getElementById('client-email'),
         clientState: document.getElementById('client-state'),
+        pipelineStage: document.getElementById('pipeline-stage'),
+        btnPipelineAdvance: document.getElementById('btn-pipeline-advance'),
+        pipelineCheckpoints: document.getElementById('pipeline-checkpoints'),
+        pipelineRisk: document.getElementById('pipeline-risk'),
+        changeTitle: document.getElementById('change-title'),
+        changeScopeDelta: document.getElementById('change-scope-delta'),
+        changeFeeImpact: document.getElementById('change-fee-impact'),
+        changeMarginImpact: document.getElementById('change-margin-impact'),
+        btnAddChangeRequest: document.getElementById('btn-add-change-request'),
+        btnApproveChangeRequest: document.getElementById('btn-approve-change-request'),
+        changeRequestList: document.getElementById('change-request-list'),
+        invoiceNumber: document.getElementById('invoice-number'),
+        invoiceAmount: document.getElementById('invoice-amount'),
+        invoiceDueDate: document.getElementById('invoice-due-date'),
+        btnAddInvoice: document.getElementById('btn-add-invoice'),
+        btnRunReminders: document.getElementById('btn-run-reminders'),
+        collectionsBuckets: document.getElementById('collections-buckets'),
+        invoiceList: document.getElementById('invoice-list'),
+        btnSendClientPack: document.getElementById('btn-send-client-pack'),
+        clientPackStatus: document.getElementById('client-pack-status'),
         customClauseSelect: document.getElementById('custom-clause-select'),
         customClauseName: document.getElementById('custom-clause-name'),
         customClauseDescription: document.getElementById('custom-clause-description'),
@@ -634,6 +669,72 @@ Date: {{date}}
             return utils.todayIso();
         }
         return new Date().toISOString().split('T')[0];
+    }
+
+    function defaultPipeline() {
+        return {
+            stage: 'lead',
+            checkpoints: {
+                proposalReady: false,
+                contractSigned: false,
+                invoiceSent: false,
+                paymentReceived: false,
+            },
+        };
+    }
+
+    function defaultContractVersions() {
+        return [
+            {
+                version: 1,
+                createdAt: nowIso(),
+                reason: 'Initial engagement terms',
+            },
+        ];
+    }
+
+    function defaultReminderRules() {
+        return [
+            { key: 'pre_due', label: '2 days before due date', offsetDays: -2, enabled: true },
+            { key: 'due_day', label: 'On due date', offsetDays: 0, enabled: true },
+            { key: 'overdue_7', label: '7 days overdue', offsetDays: 7, enabled: true },
+        ];
+    }
+
+    function normalizeBusinessFields(doc) {
+        if (!doc.pipeline || typeof doc.pipeline !== 'object') {
+            doc.pipeline = defaultPipeline();
+        }
+        if (!PIPELINE_STAGES.includes(doc.pipeline.stage)) {
+            doc.pipeline.stage = 'lead';
+        }
+        if (!doc.pipeline.checkpoints || typeof doc.pipeline.checkpoints !== 'object') {
+            doc.pipeline.checkpoints = defaultPipeline().checkpoints;
+        }
+        doc.pipeline.checkpoints.proposalReady = Boolean(doc.pipeline.checkpoints.proposalReady);
+        doc.pipeline.checkpoints.contractSigned = Boolean(doc.pipeline.checkpoints.contractSigned);
+        doc.pipeline.checkpoints.invoiceSent = Boolean(doc.pipeline.checkpoints.invoiceSent);
+        doc.pipeline.checkpoints.paymentReceived = Boolean(doc.pipeline.checkpoints.paymentReceived);
+
+        if (!Array.isArray(doc.changeRequests)) {
+            doc.changeRequests = [];
+        }
+        if (!Array.isArray(doc.contractVersions) || doc.contractVersions.length === 0) {
+            doc.contractVersions = defaultContractVersions();
+        }
+        if (!Array.isArray(doc.invoices)) {
+            doc.invoices = [];
+        }
+        if (!Array.isArray(doc.reminderRules) || doc.reminderRules.length === 0) {
+            doc.reminderRules = defaultReminderRules();
+        }
+        if (!doc.clientPack || typeof doc.clientPack !== 'object') {
+            doc.clientPack = {
+                proposalSentAt: null,
+                contractSentAt: null,
+                firstInvoiceSentAt: null,
+            };
+        }
     }
 
     function escapeHtml(text) {
@@ -1485,6 +1586,7 @@ Date: {{date}}
             if (!doc.currentRevision) {
                 doc.currentRevision = doc.revisions[doc.revisions.length - 1].revision;
             }
+            normalizeBusinessFields(doc);
             return doc;
         }
 
@@ -1505,7 +1607,7 @@ Date: {{date}}
             createdAt: doc.createdAt || nowIso(),
         };
 
-        return {
+        const migrated = {
             id: doc.id || uid('doc'),
             title: doc.title || revision.variables.project_name || 'Untitled SOW',
             clientId: doc.clientId || '',
@@ -1515,6 +1617,8 @@ Date: {{date}}
             createdAt: doc.createdAt || nowIso(),
             updatedAt: doc.updatedAt || nowIso(),
         };
+        normalizeBusinessFields(migrated);
+        return migrated;
     }
 
     async function ensureSeedDocument() {
@@ -1552,6 +1656,7 @@ Date: {{date}}
             createdAt: nowIso(),
             updatedAt: nowIso(),
         };
+        normalizeBusinessFields(seed);
 
         await dbPut(DOC_STORE, seed);
         return seed;
@@ -1871,6 +1976,377 @@ Date: {{date}}
         queueSave();
     }
 
+    function pipelineBlockers(doc) {
+        const revision = getActiveRevision();
+        if (!revision || !doc) {
+            return [];
+        }
+        const checkpoints = doc.pipeline.checkpoints || {};
+        return [
+            {
+                key: 'proposalReady',
+                label: 'Proposal prepared and reviewed',
+                done: Boolean(checkpoints.proposalReady),
+            },
+            {
+                key: 'contractSigned',
+                label: 'Contract signed',
+                done: Boolean(checkpoints.contractSigned),
+            },
+            {
+                key: 'invoiceSent',
+                label: 'Initial invoice sent',
+                done: Boolean(checkpoints.invoiceSent),
+            },
+            {
+                key: 'paymentReceived',
+                label: 'Initial payment received',
+                done: Boolean(checkpoints.paymentReceived),
+            },
+        ];
+    }
+
+    function renderPipelinePanel() {
+        const doc = state.currentDoc;
+        if (!doc || !el.pipelineStage) {
+            return;
+        }
+        normalizeBusinessFields(doc);
+        el.pipelineStage.value = doc.pipeline.stage;
+        const blockers = pipelineBlockers(doc);
+        el.pipelineCheckpoints.innerHTML = '';
+        blockers.forEach((item) => {
+            const li = document.createElement('li');
+            li.className = item.done ? 'done' : 'todo';
+            li.textContent = (item.done ? 'OK: ' : 'Missing: ') + item.label;
+            el.pipelineCheckpoints.appendChild(li);
+        });
+        const blocked = blockers.some((item) => !item.done);
+        el.pipelineRisk.textContent = blocked
+            ? 'At-risk: unresolved checkpoint(s) are slowing conversion to paid work.'
+            : 'Healthy: all checkpoints clear.';
+    }
+
+    function advancePipelineStage() {
+        const doc = state.currentDoc;
+        if (!doc) {
+            return;
+        }
+        const stageFromUi = el.pipelineStage.value;
+        const currentIndex = PIPELINE_STAGES.indexOf(doc.pipeline.stage);
+        const desiredIndex = PIPELINE_STAGES.indexOf(stageFromUi);
+        if (desiredIndex < 0) {
+            return;
+        }
+
+        const blockers = pipelineBlockers(doc).filter((item) => !item.done);
+        if (desiredIndex > currentIndex && blockers.length > 0) {
+            notify('Cannot advance stage yet: complete required checkpoints first.', 'error');
+            renderPipelinePanel();
+            return;
+        }
+        doc.pipeline.stage = stageFromUi;
+        doc.updatedAt = nowIso();
+        renderPipelinePanel();
+        queueSave();
+    }
+
+    function renderChangeRequestList() {
+        if (!state.currentDoc || !el.changeRequestList) {
+            return;
+        }
+        const requests = state.currentDoc.changeRequests.slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+        el.changeRequestList.innerHTML = '';
+        if (requests.length === 0) {
+            const li = document.createElement('li');
+            li.textContent = 'No change requests yet.';
+            el.changeRequestList.appendChild(li);
+            return;
+        }
+        requests.forEach((item) => {
+            const li = document.createElement('li');
+            li.innerHTML = '<strong>' + escapeHtml(item.title) + '</strong>'
+                + ' [' + escapeHtml(item.status || 'pending') + ']'
+                + '<br><span class="revision-meta">Fee: $' + Number(item.feeImpact || 0).toFixed(2)
+                + ' | Margin: ' + Number(item.marginImpact || 0).toFixed(1) + '%</span>';
+            el.changeRequestList.appendChild(li);
+        });
+    }
+
+    function addChangeRequestRecord() {
+        const doc = state.currentDoc;
+        if (!doc) {
+            return;
+        }
+        const title = (el.changeTitle.value || '').trim();
+        const scopeDelta = (el.changeScopeDelta.value || '').trim();
+        const feeImpact = Number(el.changeFeeImpact.value || 0);
+        const marginImpact = Number(el.changeMarginImpact.value || 0);
+        if (!title || !scopeDelta) {
+            notify('Change request title and scope delta are required.', 'error');
+            return;
+        }
+        doc.changeRequests.push({
+            id: uid('cr'),
+            title: title,
+            scopeDelta: scopeDelta,
+            feeImpact: Number.isFinite(feeImpact) ? feeImpact : 0,
+            marginImpact: Number.isFinite(marginImpact) ? marginImpact : 0,
+            status: 'pending',
+            createdAt: nowIso(),
+        });
+        el.changeTitle.value = '';
+        el.changeScopeDelta.value = '';
+        el.changeFeeImpact.value = '';
+        el.changeMarginImpact.value = '';
+        renderChangeRequestList();
+        queueSave();
+    }
+
+    function approveLatestChangeRequest() {
+        const doc = state.currentDoc;
+        if (!doc || !doc.changeRequests.length) {
+            notify('No pending change request to approve.', 'error');
+            return;
+        }
+        const pending = doc.changeRequests.find((item) => item.status === 'pending');
+        if (!pending) {
+            notify('All change requests are already resolved.', 'error');
+            return;
+        }
+        pending.status = 'approved';
+        pending.approvedAt = nowIso();
+        const latestVersion = doc.contractVersions.reduce((max, item) => Math.max(max, Number(item.version || 0)), 0) || 1;
+        doc.contractVersions.push({
+            version: latestVersion + 1,
+            createdAt: nowIso(),
+            reason: 'Approved change request: ' + pending.title,
+            changeRequestId: pending.id,
+        });
+        const revision = ensureEditableCurrent();
+        if (revision) {
+            const note = '\n## Approved Change Request\n'
+                + '- Title: ' + pending.title + '\n'
+                + '- Scope Delta: ' + pending.scopeDelta + '\n'
+                + '- Fee Impact: $' + Number(pending.feeImpact || 0).toFixed(2) + '\n'
+                + '- Margin Impact: ' + Number(pending.marginImpact || 0).toFixed(1) + '%\n';
+            el.editor.value += note;
+            setRevisionFromUi(revision);
+            renderPreview();
+        }
+        renderChangeRequestList();
+        queueSave();
+    }
+
+    function daysPastDue(dueDate) {
+        if (!dueDate) {
+            return 0;
+        }
+        const due = new Date(dueDate + 'T00:00:00');
+        const now = new Date(today() + 'T00:00:00');
+        const diffMs = now.getTime() - due.getTime();
+        return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    }
+
+    function computeAging(doc) {
+        const totals = {
+            current: 0,
+            days_1_15: 0,
+            days_16_30: 0,
+            days_31_plus: 0,
+        };
+        doc.invoices.forEach((invoice) => {
+            if (invoice.status === 'paid') {
+                return;
+            }
+            const delta = daysPastDue(invoice.dueDate);
+            const amount = Number(invoice.amount || 0);
+            AGING_BUCKETS.forEach((bucket) => {
+                if (delta >= bucket.min && delta <= bucket.max) {
+                    totals[bucket.key] += amount;
+                }
+            });
+        });
+        return totals;
+    }
+
+    function renderCollectionsPanel() {
+        const doc = state.currentDoc;
+        if (!doc || !el.collectionsBuckets || !el.invoiceList) {
+            return;
+        }
+        const hasOpenInvoices = doc.invoices.some((invoice) => invoice.status !== 'paid');
+        if (doc.invoices.length > 0 && !hasOpenInvoices) {
+            doc.pipeline.checkpoints.paymentReceived = true;
+            if (PIPELINE_STAGES.indexOf(doc.pipeline.stage) < PIPELINE_STAGES.indexOf('payment')) {
+                doc.pipeline.stage = 'payment';
+            }
+        } else if (hasOpenInvoices) {
+            doc.pipeline.checkpoints.paymentReceived = false;
+        }
+        const aging = computeAging(doc);
+        el.collectionsBuckets.innerHTML = '';
+        AGING_BUCKETS.forEach((bucket) => {
+            const card = document.createElement('div');
+            card.className = 'bucket-card';
+            card.innerHTML = '<strong>$' + Number(aging[bucket.key] || 0).toFixed(2)
+                + '</strong><span>' + bucket.label + '</span>';
+            el.collectionsBuckets.appendChild(card);
+        });
+
+        const invoices = doc.invoices.slice().sort((a, b) => (a.dueDate > b.dueDate ? 1 : -1));
+        el.invoiceList.innerHTML = '';
+        if (invoices.length === 0) {
+            const li = document.createElement('li');
+            li.textContent = 'No invoices tracked yet.';
+            el.invoiceList.appendChild(li);
+            return;
+        }
+        invoices.forEach((invoice) => {
+            const overdue = daysPastDue(invoice.dueDate);
+            const overdueText = overdue > 0 ? ' | ' + overdue + 'd overdue' : '';
+            const li = document.createElement('li');
+            li.innerHTML = '<strong>' + escapeHtml(invoice.number) + '</strong> - $'
+                + Number(invoice.amount || 0).toFixed(2)
+                + '<br><span class="revision-meta">Due ' + escapeHtml(invoice.dueDate || 'n/a')
+                + ' | Status: ' + escapeHtml(invoice.status || 'open') + overdueText + '</span>';
+            el.invoiceList.appendChild(li);
+        });
+    }
+
+    function addInvoiceRecord() {
+        const doc = state.currentDoc;
+        if (!doc) {
+            return;
+        }
+        const number = (el.invoiceNumber.value || '').trim();
+        const amount = Number(el.invoiceAmount.value || 0);
+        const dueDate = (el.invoiceDueDate.value || '').trim();
+        if (!number || !dueDate || !Number.isFinite(amount) || amount <= 0) {
+            notify('Invoice number, due date, and positive amount are required.', 'error');
+            return;
+        }
+        doc.invoices.push({
+            id: uid('inv'),
+            number: number,
+            amount: amount,
+            dueDate: dueDate,
+            status: 'open',
+            createdAt: nowIso(),
+        });
+        doc.pipeline.checkpoints.invoiceSent = true;
+        if (PIPELINE_STAGES.indexOf(doc.pipeline.stage) < PIPELINE_STAGES.indexOf('invoice')) {
+            doc.pipeline.stage = 'invoice';
+        }
+        el.invoiceNumber.value = '';
+        el.invoiceAmount.value = '';
+        el.invoiceDueDate.value = '';
+        renderCollectionsPanel();
+        renderPipelinePanel();
+        queueSave();
+    }
+
+    async function runReminderCheck() {
+        const doc = state.currentDoc;
+        if (!doc) {
+            return;
+        }
+        const openInvoices = doc.invoices.filter((invoice) => invoice.status !== 'paid');
+        if (openInvoices.length === 0) {
+            notify('No open invoices for reminder run.', 'success');
+            return;
+        }
+        let reminderHits = 0;
+        openInvoices.forEach((invoice) => {
+            const overdueDays = daysPastDue(invoice.dueDate);
+            doc.reminderRules.forEach((rule) => {
+                if (rule.enabled && overdueDays === rule.offsetDays) {
+                    reminderHits += 1;
+                }
+            });
+        });
+        notify(
+            reminderHits > 0
+                ? 'Reminder check complete: ' + reminderHits + ' reminder(s) due now.'
+                : 'Reminder check complete: no reminders due today.',
+            'success'
+        );
+
+        try {
+            const response = await fetch('/api/integrations/billing/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    provider: 'stripe',
+                    invoices: openInvoices.map((invoice) => ({
+                        number: invoice.number,
+                        amount: invoice.amount,
+                        due_date: invoice.dueDate,
+                        status: invoice.status,
+                    })),
+                }),
+            });
+            const payload = await response.json();
+            if (response.ok) {
+                notify(
+                    'Billing sync: $' + Number(payload.total_outstanding || 0).toFixed(2)
+                    + ' outstanding across ' + Number(payload.outstanding_count || 0) + ' invoice(s).',
+                    'success'
+                );
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function renderClientPackPanel() {
+        const doc = state.currentDoc;
+        if (!doc || !el.clientPackStatus) {
+            return;
+        }
+        const pack = doc.clientPack;
+        const items = [
+            { label: 'Proposal sent', value: pack.proposalSentAt },
+            { label: 'Contract sent', value: pack.contractSentAt },
+            { label: 'First invoice sent', value: pack.firstInvoiceSentAt },
+        ];
+        el.clientPackStatus.innerHTML = '';
+        items.forEach((item) => {
+            const li = document.createElement('li');
+            li.className = item.value ? 'done' : 'todo';
+            li.textContent = item.value
+                ? 'OK: ' + item.label + ' (' + new Date(item.value).toLocaleDateString() + ')'
+                : 'Missing: ' + item.label;
+            el.clientPackStatus.appendChild(li);
+        });
+    }
+
+    function sendClientPack() {
+        const doc = state.currentDoc;
+        if (!doc) {
+            return;
+        }
+        const revision = getActiveRevision();
+        const hasClient = Boolean((el.clientEmail.value || '').trim());
+        if (!revision || !hasClient) {
+            notify('Client email and active draft are required to send client pack.', 'error');
+            return;
+        }
+        const now = nowIso();
+        doc.clientPack.proposalSentAt = doc.clientPack.proposalSentAt || now;
+        doc.clientPack.contractSentAt = doc.clientPack.contractSentAt || now;
+        doc.clientPack.firstInvoiceSentAt = doc.clientPack.firstInvoiceSentAt || now;
+        doc.pipeline.checkpoints.proposalReady = true;
+        doc.pipeline.checkpoints.contractSigned = revision.status === 'signed';
+        if (doc.invoices.length > 0) {
+            doc.pipeline.checkpoints.invoiceSent = true;
+        }
+        renderClientPackPanel();
+        renderPipelinePanel();
+        queueSave();
+        notify('Client pack staged: proposal, contract, and first-invoice steps are tracked.', 'success');
+    }
+
     function bindDocToUi() {
         const revision = getActiveRevision();
         if (!revision) {
@@ -1897,6 +2373,10 @@ Date: {{date}}
         renderRevisionList();
         renderClientSelect();
         renderCustomClauseSelect();
+        renderPipelinePanel();
+        renderChangeRequestList();
+        renderCollectionsPanel();
+        renderClientPackPanel();
         if (docChanged) {
             clearComparison();
         }
@@ -1919,6 +2399,12 @@ Date: {{date}}
         revision.variables = collectVariables();
         revision.templateId = el.templateSelect.value;
         revision.pageSize = el.pageSize.value;
+        if (state.currentDoc && state.currentDoc.pipeline && state.currentDoc.pipeline.checkpoints) {
+            state.currentDoc.pipeline.checkpoints.proposalReady = Boolean(revision.markdown.trim());
+            if (revision.status === 'signed') {
+                state.currentDoc.pipeline.checkpoints.contractSigned = true;
+            }
+        }
     }
 
     function createRevisionFromCurrent(reason) {
@@ -2109,10 +2595,17 @@ Date: {{date}}
         const hasConsultant = revision.signatures.some((sig) => sig.role === 'consultant');
         const hasClient = revision.signatures.some((sig) => sig.role === 'client');
         revision.status = hasConsultant && hasClient ? 'signed' : 'draft';
+        if (state.currentDoc && state.currentDoc.pipeline && hasConsultant && hasClient) {
+            state.currentDoc.pipeline.checkpoints.contractSigned = true;
+            if (PIPELINE_STAGES.indexOf(state.currentDoc.pipeline.stage) < PIPELINE_STAGES.indexOf('contract')) {
+                state.currentDoc.pipeline.stage = 'contract';
+            }
+        }
 
         closeSignatureModal();
         renderPreview();
         syncStatusUi(revision);
+        renderPipelinePanel();
         queueSave();
     }
 
@@ -2431,6 +2924,7 @@ Date: {{date}}
             createdAt: nowIso(),
             updatedAt: nowIso(),
         };
+        normalizeBusinessFields(doc);
 
         await dbPut(DOC_STORE, doc);
         state.currentDoc = doc;
@@ -3000,6 +3494,31 @@ ${el.preview.innerHTML}
         el.btnSaveClient.addEventListener('click', function () {
             saveClient().catch(console.error);
         });
+        if (el.btnPipelineAdvance) {
+            el.btnPipelineAdvance.addEventListener('click', advancePipelineStage);
+        }
+        if (el.pipelineStage) {
+            el.pipelineStage.addEventListener('change', function () {
+                advancePipelineStage();
+            });
+        }
+        if (el.btnAddChangeRequest) {
+            el.btnAddChangeRequest.addEventListener('click', addChangeRequestRecord);
+        }
+        if (el.btnApproveChangeRequest) {
+            el.btnApproveChangeRequest.addEventListener('click', approveLatestChangeRequest);
+        }
+        if (el.btnAddInvoice) {
+            el.btnAddInvoice.addEventListener('click', addInvoiceRecord);
+        }
+        if (el.btnRunReminders) {
+            el.btnRunReminders.addEventListener('click', function () {
+                runReminderCheck().catch(console.error);
+            });
+        }
+        if (el.btnSendClientPack) {
+            el.btnSendClientPack.addEventListener('click', sendClientPack);
+        }
         el.btnSaveCustomClause.addEventListener('click', function () {
             saveCustomClause().catch(console.error);
         });

@@ -83,6 +83,51 @@
             </section>
 
             <section>
+                <h2>Revenue Pipeline</h2>
+                <select id="pipeline-stage" class="control-select full-width">
+                    <option value="lead">Lead</option>
+                    <option value="proposal">Proposal</option>
+                    <option value="contract">Contract</option>
+                    <option value="invoice">Invoice</option>
+                    <option value="payment">Payment</option>
+                </select>
+                <button id="btn-pipeline-advance" class="btn btn-small">Advance Stage</button>
+                <ul id="pipeline-checkpoints" class="simple-checklist"></ul>
+                <p id="pipeline-risk" class="muted">No current pipeline risk.</p>
+            </section>
+
+            <section>
+                <h2>Change Requests</h2>
+                <label>Title<input type="text" id="change-title" placeholder="Scope increase: analytics dashboard"></label>
+                <label>Scope Delta<input type="text" id="change-scope-delta" placeholder="+2 pages, +event tracking"></label>
+                <label>Fee Impact (USD)<input type="number" id="change-fee-impact" min="0" step="1" placeholder="1200"></label>
+                <label>Margin Impact (%)<input type="number" id="change-margin-impact" min="-100" max="100" step="1" placeholder="-5"></label>
+                <div class="clause-actions">
+                    <button id="btn-add-change-request" class="btn btn-small">Add Request</button>
+                    <button id="btn-approve-change-request" class="btn btn-small">Approve Latest</button>
+                </div>
+                <ul id="change-request-list" class="compact-list"></ul>
+            </section>
+
+            <section>
+                <h2>Collections</h2>
+                <label>Invoice Number<input type="text" id="invoice-number" placeholder="INV-1007"></label>
+                <label>Amount (USD)<input type="number" id="invoice-amount" min="0" step="1" placeholder="3000"></label>
+                <label>Due Date<input type="date" id="invoice-due-date"></label>
+                <button id="btn-add-invoice" class="btn btn-small">Add Invoice</button>
+                <button id="btn-run-reminders" class="btn btn-small">Run Reminder Check</button>
+                <div id="collections-buckets" class="bucket-grid"></div>
+                <ul id="invoice-list" class="compact-list"></ul>
+            </section>
+
+            <section>
+                <h2>Client Pack</h2>
+                <p class="muted">Proposal + contract + first invoice in one guided send flow.</p>
+                <button id="btn-send-client-pack" class="btn btn-small">Send Client Pack</button>
+                <ul id="client-pack-status" class="simple-checklist"></ul>
+            </section>
+
+            <section>
                 <h2>Variables</h2>
                 <label>Client Name<input type="text" data-var="client_name"></label>
                 <label>Project Name<input type="text" data-var="project_name"></label>

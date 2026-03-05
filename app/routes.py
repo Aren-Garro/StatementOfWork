@@ -35,6 +35,10 @@ from app.services.publish_service import (
     get_published_metadata,
 )
 from app.services.email_delivery_service import send_published_email
+from app.services.billing_provider_service import (
+    available_providers,
+    sync_provider_invoices,
+)
 
 main_bp = Blueprint('main', __name__)
 api_bp = Blueprint('api', __name__)
@@ -687,6 +691,31 @@ def delete_template(template_id):
     if not success:
         return jsonify({'error': 'Template not found'}), 404
     return jsonify({'message': 'Deleted'})
+
+
+@api_bp.route('/integrations/billing/providers', methods=['GET'])
+def billing_providers():
+    """List available billing provider adapters."""
+    return jsonify({'providers': available_providers()})
+
+
+@api_bp.route('/integrations/billing/sync', methods=['POST'])
+def billing_sync():
+    """Normalize invoice sync payload for configured adapter."""
+    data = _read_json_object()
+    if data is None:
+        return jsonify({'error': 'JSON object body is required'}), 400
+
+    provider = _normalized_text(data.get('provider'), 'stripe', 64).lower()
+    invoices = data.get('invoices', [])
+    if not isinstance(invoices, list):
+        return jsonify({'error': 'invoices must be an array'}), 400
+
+    try:
+        result = sync_provider_invoices(provider, invoices)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify(result)
 
 
 @api_bp.route('/setup/status', methods=['GET'])
