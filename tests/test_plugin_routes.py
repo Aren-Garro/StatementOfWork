@@ -7,6 +7,7 @@ import pytest
 
 import app.models as models
 import app.services.email_delivery_service as email_delivery_service
+import app.services.publish_service as publish_service
 from app import create_app
 from app.email_service import EmailConfigError, EmailSendError
 
@@ -164,6 +165,94 @@ def test_publish_persists_metadata(client):
         assert "<script" not in row["html"].lower()
         assert "onclick" not in row["html"].lower()
         assert "javascript:" not in row["html"].lower()
+
+
+def test_publish_retries_on_id_collision(client, monkeypatch):
+    test_client, app = client
+    collision_id = "fixed_collision_id"
+    now = datetime.now(timezone.utc)
+
+    with app.app_context():
+        db = models.get_db()
+        db.execute(
+            """INSERT INTO published_docs
+               (id, title, html, created_at, expires_at, deleted, views, signed, jurisdiction, template, page_size)
+               VALUES (?, ?, ?, ?, ?, 0, 0, 0, 'US_BASE', 'modern', 'Letter')""",
+            (
+                collision_id,
+                "Existing",
+                "<p>existing</p>",
+                now.isoformat(),
+                (now + timedelta(days=5)).isoformat(),
+            ),
+        )
+        db.commit()
+
+    sequence = iter([collision_id, "fresh_publish_id"])
+    monkeypatch.setattr(publish_service.secrets, "token_urlsafe", lambda _: next(sequence))
+
+    response = test_client.post(
+        "/plugin/v1/publish",
+        json={"title": "Retry Publish", "html": "<h1>Hello</h1>"},
+    )
+    assert response.status_code == 201
+    payload = response.get_json()
+    assert payload["publish_id"] == "fresh_publish_id"
+
+
+def test_publish_returns_store_error_after_collision_retries(client, monkeypatch):
+    test_client, app = client
+    collision_id = "always_collision"
+    now = datetime.now(timezone.utc)
+
+    with app.app_context():
+        db = models.get_db()
+        db.execute(
+            """INSERT INTO published_docs
+               (id, title, html, created_at, expires_at, deleted, views, signed, jurisdiction, template, page_size)
+               VALUES (?, ?, ?, ?, ?, 0, 0, 0, 'US_BASE', 'modern', 'Letter')""",
+            (
+                collision_id,
+                "Existing",
+                "<p>existing</p>",
+                now.isoformat(),
+                (now + timedelta(days=5)).isoformat(),
+            ),
+        )
+        db.commit()
+
+    monkeypatch.setattr(publish_service.secrets, "token_urlsafe", lambda _: collision_id)
+    response = test_client.post(
+        "/plugin/v1/publish",
+        json={"title": "Retry Publish", "html": "<h1>Hello</h1>"},
+    )
+    assert response.status_code == 503
+    payload = response.get_json()
+    assert payload["code"] == "PUBLISH_STORE_ERROR"
+
+
+def test_public_doc_returns_500_when_expires_timestamp_is_invalid(client):
+    test_client, app = client
+    broken_id = "broken_timestamp_doc"
+    now = datetime.now(timezone.utc)
+    with app.app_context():
+        db = models.get_db()
+        db.execute(
+            """INSERT INTO published_docs
+               (id, title, html, created_at, expires_at, deleted, views, signed, jurisdiction, template, page_size)
+               VALUES (?, ?, ?, ?, ?, 0, 0, 0, 'US_BASE', 'modern', 'Letter')""",
+            (
+                broken_id,
+                "Broken",
+                "<p>broken</p>",
+                now.isoformat(),
+                "not-a-timestamp",
+            ),
+        )
+        db.commit()
+
+    response = test_client.get(f"/p/{broken_id}")
+    assert response.status_code == 500
 
 
 def _publish_for_email(test_client):

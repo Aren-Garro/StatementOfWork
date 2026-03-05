@@ -910,6 +910,25 @@ Date: {{date}}
         return true;
     }
 
+    function validImportedClient(client) {
+        if (!client || typeof client !== 'object') {
+            return false;
+        }
+        const id = String(client.id || '').trim();
+        const legalName = String(client.legalName || '').trim();
+        return Boolean(id && legalName);
+    }
+
+    function validImportedClause(clause) {
+        if (!clause || typeof clause !== 'object') {
+            return false;
+        }
+        const id = String(clause.id || '').trim();
+        const name = String(clause.name || '').trim();
+        const body = String(clause.body || '').trim();
+        return Boolean(id && name && body);
+    }
+
     function validateStageTransition(doc, fromStage, toStage) {
         const fromIndex = PIPELINE_STAGES.indexOf(fromStage);
         const toIndex = PIPELINE_STAGES.indexOf(toStage);
@@ -3009,16 +3028,20 @@ Date: {{date}}
                         const pkgClients = Array.isArray(pkg.clients) ? pkg.clients : [];
                         for (let j = 0; j < pkgClients.length; j += 1) {
                             const client = pkgClients[j];
-                            if (client && client.id) {
+                            if (validImportedClient(client)) {
                                 await dbPut(CLIENT_STORE, client);
                                 importSummary.clientsImported += 1;
+                            } else {
+                                importSummary.errors.push(`Package ${i + 1}: skipped invalid client at index ${j}`);
                             }
                         }
                         const pkgClauses = Array.isArray(pkg.customClauses) ? pkg.customClauses : [];
                         for (let j = 0; j < pkgClauses.length; j += 1) {
                             const clause = pkgClauses[j];
-                            if (clause && clause.id) {
+                            if (validImportedClause(clause)) {
                                 await dbPut(CLAUSE_STORE, clause);
+                            } else {
+                                importSummary.errors.push(`Package ${i + 1}: skipped invalid clause at index ${j}`);
                             }
                         }
                     }
@@ -3051,17 +3074,21 @@ Date: {{date}}
                 if (Array.isArray(parsed.clients)) {
                     for (let i = 0; i < parsed.clients.length; i += 1) {
                         const client = parsed.clients[i];
-                        if (client && client.id) {
+                        if (validImportedClient(client)) {
                             await dbPut(CLIENT_STORE, client);
                             importSummary.clientsImported += 1;
+                        } else {
+                            importSummary.errors.push(`Skipped invalid client at index ${i}`);
                         }
                     }
                 }
                 if (Array.isArray(parsed.customClauses)) {
                     for (let i = 0; i < parsed.customClauses.length; i += 1) {
                         const clause = parsed.customClauses[i];
-                        if (clause && clause.id) {
+                        if (validImportedClause(clause)) {
                             await dbPut(CLAUSE_STORE, clause);
+                        } else {
+                            importSummary.errors.push(`Skipped invalid clause at index ${i}`);
                         }
                     }
                 }

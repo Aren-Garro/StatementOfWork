@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import secrets
+import sqlite3
 
 
 @dataclass
@@ -76,6 +77,13 @@ def _bounded_expiry_days(expires_in_days: int) -> int:
     return max(1, min(365, expires_in_days))
 
 
+def _parse_iso_timestamp(value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError) as exc:
+        raise ServiceError('Invalid stored publish timestamp', 500) from exc
+
+
 def create_published_document(
     *,
     db,
@@ -107,28 +115,36 @@ def create_published_document(
     )
 
     expires_in_days = _bounded_expiry_days(expires_in_days)
-    publish_id = secrets.token_urlsafe(8)
     now = utc_now()
     expires_at = now + timedelta(days=expires_in_days)
-
-    db.execute(
-        '''INSERT INTO published_docs
-           (id, title, html, created_at, expires_at, revision, signed, jurisdiction, template, page_size)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-        (
-            publish_id,
-            title,
-            sanitized_html,
-            now.isoformat(),
-            expires_at.isoformat(),
-            revision,
-            1 if signed else 0,
-            jurisdiction,
-            template,
-            page_size,
-        ),
-    )
-    db.commit()
+    publish_id = None
+    for _ in range(3):
+        candidate = secrets.token_urlsafe(8)
+        try:
+            db.execute(
+                '''INSERT INTO published_docs
+                   (id, title, html, created_at, expires_at, revision, signed, jurisdiction, template, page_size)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (
+                    candidate,
+                    title,
+                    sanitized_html,
+                    now.isoformat(),
+                    expires_at.isoformat(),
+                    revision,
+                    1 if signed else 0,
+                    jurisdiction,
+                    template,
+                    page_size,
+                ),
+            )
+            db.commit()
+            publish_id = candidate
+            break
+        except sqlite3.IntegrityError:
+            continue
+    if not publish_id:
+        raise ServiceError('Unable to create published document id', 503)
 
     return {
         'publish_id': publish_id,
@@ -151,7 +167,7 @@ def get_published_for_email(*, db, publish_id: str) -> dict:
     if not row or row['deleted']:
         raise ServiceError('Not found', 404)
 
-    expires_at = datetime.fromisoformat(row['expires_at'])
+    expires_at = _parse_iso_timestamp(row['expires_at'])
     if expires_at < utc_now():
         raise ServiceError('Link expired', 410)
     return dict(row)
@@ -168,7 +184,7 @@ def get_public_published_document(*, db, publish_id: str) -> dict:
     if not row or row['deleted']:
         raise ServiceError('Not found', 404)
 
-    expires_at = datetime.fromisoformat(row['expires_at'])
+    expires_at = _parse_iso_timestamp(row['expires_at'])
     if expires_at < utc_now():
         raise ServiceError('Link expired', 410)
 

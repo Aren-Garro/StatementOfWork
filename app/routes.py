@@ -549,7 +549,8 @@ def published_doc(publish_id):
             return render_template('published.html', title='Not Found', content='<p>Document not found.</p>'), 404
         if exc.status_code == 410:
             return render_template('published.html', title='Expired', content='<p>This link has expired.</p>'), 410
-        return render_template('published.html', title='Not Found', content='<p>Document not found.</p>'), 404
+        _log_event('error', 'plugin.publish_doc.failed', publish_id=publish_id, error=str(exc))
+        return render_template('published.html', title='Unavailable', content='<p>Document is temporarily unavailable.</p>'), 500
 
     return render_template('published.html', title=row['title'], content=row['html'])
 
@@ -855,7 +856,11 @@ def publish_document():
         published = _create_published_or_error(payload)
     except ServiceError as exc:
         _log_event('info', 'plugin.publish.invalid', client_ip=client_ip, error=str(exc))
-        return jsonify({'error': str(exc)}), exc.status_code
+        code = 'PUBLISH_DATA_INVALID' if exc.status_code < 500 else 'PUBLISH_STORE_ERROR'
+        return jsonify({'error': str(exc), 'code': code}), exc.status_code
+    except Exception as exc:  # pragma: no cover - defensive
+        _log_event('error', 'plugin.publish.failed', client_ip=client_ip, error=str(exc))
+        return jsonify({'error': 'Publish request failed', 'code': 'PUBLISH_STORE_ERROR'}), 500
 
     response = _publish_response_payload(published, host_url=request.host_url)
     _log_event(
